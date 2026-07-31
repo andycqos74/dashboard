@@ -1,0 +1,9 @@
+.git
+.gitignore
+*.dc.html
+design-reference.dc.html
+README.md
+docs
+docker-compose.yml
+Dockerfile
+.dockerignore
