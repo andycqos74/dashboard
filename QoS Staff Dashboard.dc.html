@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#1D2C69; --navy-deep:#131E4A; --navy-soft:#3A4C96;
+    --bg:#F4F6FB; --bg2:#EAEEF7; --surface:#FFFFFF; --surface2:#F8FAFD;
+    --text:#12193A; --text-dim:#5C6588; --line:#E1E6F2; --line-strong:#CFD6E9;
+    --tile:#FFFFFF; --shadow:0 1px 2px rgba(19,30,74,.06),0 8px 24px rgba(19,30,74,.07);
+    --shadow-lift:0 2px 6px rgba(19,30,74,.10),0 18px 40px rgba(19,30,74,.16);
+  }
+  [data-theme="dark"]{
+    --bg:#0C1330; --bg2:#111A3D; --surface:#151F45; --surface2:#1B2653;
+    --text:#EEF1FA; --text-dim:#95A0C6; --line:#26325E; --line-strong:#35426F;
+    --tile:#182352; --navy:#5A73D6; --navy-soft:#8DA0EA;
+    --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 30px rgba(0,0,0,.35);
+    --shadow-lift:0 2px 8px rgba(0,0,0,.45),0 22px 48px rgba(0,0,0,.5);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:Barlow,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:var(--navy);text-decoration:none}
+  a:hover{color:var(--navy-soft)}
+  input,button{font-family:inherit}
+  ::placeholder{color:var(--text-dim);opacity:1}
+</style>
+</helmet>
+<div data-theme="{{ theme }}" style="min-height:100vh;background:radial-gradient(1200px 600px at 50% -280px, var(--bg2), var(--bg) 70%);padding:34px 32px 72px;font-family:Barlow,Helvetica,Arial,sans-serif;color:var(--text)">
+  <div style="max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:28px">
+
+    <header style="display:flex;align-items:center;gap:18px">
+      <img src="uploads/logo-1785500408324.png" alt="Queen of the South FC crest" style="width:56px;height:56px;border-radius:50%;background:#fff;box-shadow:var(--shadow);flex:none">
+      <div style="display:flex;flex-direction:column;gap:2px;margin-right:auto">
+        <div style="font-family:'Barlow Condensed',Barlow,sans-serif;font-weight:700;font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--navy)">Queen of the South FC</div>
+        <div style="font-size:26px;font-weight:700;letter-spacing:-.01em;line-height:1.1">{{ greeting }}, Doonhamers</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;box-shadow:var(--shadow)">
+          <button onClick="{{ setGrouped }}" style="{{ tabGroupedStyle }}">Grouped</button>
+          <button onClick="{{ setCompact }}" style="{{ tabCompactStyle }}">Compact</button>
+        </div>
+        <button onClick="{{ toggleTheme }}" title="Toggle light / dark" style="width:40px;height:40px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:16px;cursor:pointer;box-shadow:var(--shadow)" style-hover="border-color:var(--line-strong)">{{ themeIcon }}</button>
+        <button onClick="{{ openAdd }}" style="height:40px;padding:0 18px;border-radius:999px;border:0;background:var(--navy);color:#fff;font-size:14px;font-weight:600;cursor:pointer;box-shadow:var(--shadow);display:flex;align-items:center;gap:8px" style-hover="background:var(--navy-soft)"><span style="font-size:17px;line-height:1">+</span>Add link</button>
+      </div>
+    </header>
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:0 18px;height:60px;box-shadow:var(--shadow)">
+        <span style="font-size:19px;color:var(--text-dim)">⌕</span>
+        <input value="{{ query }}" onChange="{{ onQuery }}" onKeyDown="{{ onSearchKey }}" placeholder="Search your links, or press ↵ to search the web" style="flex:1;border:0;outline:none;background:transparent;color:var(--text);font-size:17px;font-weight:500;min-width:0">
+        <span style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);border:1px solid var(--line);border-radius:8px;padding:5px 9px;white-space:nowrap">{{ searchHint }}</span>
+      </div>
+    </div>
+
+    <sc-if value="{{ showFavourites }}" hint-placeholder-val="{{ true }}">
+      <section style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <h2 style="margin:0;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:14px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim)">Pinned</h2>
+          <span style="font-size:13px;color:var(--text-dim)">Your most-used tools</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(206px,1fr));gap:14px">
+          <sc-for list="{{ favourites }}" as="link" hint-placeholder-count="4">
+            <a href="{{ link.url }}" target="_blank" rel="noopener" onClick="{{ link.onOpen }}" draggable="true" onDragStart="{{ link.onDragStart }}" onDragOver="{{ link.onDragOver }}" onDrop="{{ link.onDrop }}" style="position:relative;display:flex;align-items:center;gap:13px;background:var(--tile);border:1px solid var(--line);border-radius:16px;padding:15px 15px;box-shadow:var(--shadow);color:var(--text);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease" style-hover="transform:translateY(-3px);box-shadow:var(--shadow-lift);border-color:var(--line-strong)">
+              <span style="{{ link.badgeStyle }}">{{ link.initials }}</span>
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ link.name }}</span>
+                <span style="font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ link.host }}</span>
+              </span>
+            </a>
+          </sc-for>
+        </div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{ showRecents }}" hint-placeholder-val="{{ true }}">
+      <section style="display:flex;flex-wrap:wrap;align-items:center;gap:9px">
+        <h2 style="margin:0 6px 0 0;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:14px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim)">Recent</h2>
+        <sc-for list="{{ recents }}" as="link" hint-placeholder-count="3">
+          <a href="{{ link.url }}" target="_blank" rel="noopener" onClick="{{ link.onOpen }}" style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:7px 14px 7px 9px;font-size:13px;font-weight:600;color:var(--text)" style-hover="border-color:var(--line-strong);color:var(--navy)">
+            <span style="{{ link.dotStyle }}"></span>{{ link.name }}
+          </a>
+        </sc-for>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{ isGrouped }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:30px">
+        <sc-for list="{{ groups }}" as="group" hint-placeholder-count="3">
+          <section style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <h2 style="margin:0;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:14px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--navy)">{{ group.name }}</h2>
+              <span style="flex:1;height:1px;background:var(--line)"></span>
+              <span style="font-size:12px;font-weight:600;color:var(--text-dim)">{{ group.count }}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px">
+              <sc-for list="{{ group.links }}" as="link" hint-placeholder-count="4">
+                <div draggable="true" onDragStart="{{ link.onDragStart }}" onDragOver="{{ link.onDragOver }}" onDrop="{{ link.onDrop }}" style="position:relative;background:var(--tile);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease" style-hover="transform:translateY(-3px);box-shadow:var(--shadow-lift);border-color:var(--line-strong)">
+                  <a href="{{ link.url }}" target="_blank" rel="noopener" onClick="{{ link.onOpen }}" style="display:flex;flex-direction:column;gap:12px;padding:17px 17px 15px;color:var(--text)">
+                    <span style="{{ link.badgeStyle }}">{{ link.initials }}</span>
+                    <span style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                      <span style="font-size:16px;font-weight:600;letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ link.name }}</span>
+                      <span style="font-size:12.5px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ link.host }}</span>
+                    </span>
+                  </a>
+                  <div style="position:absolute;top:11px;right:11px;display:flex;gap:4px">
+                    <button onClick="{{ link.onFav }}" title="Pin" style="{{ link.favStyle }}">★</button>
+                    <button onClick="{{ link.onEdit }}" title="Edit" style="width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:var(--text-dim);font-size:12px;cursor:pointer;opacity:.55" style-hover="opacity:1;background:var(--surface2)">✎</button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isCompact }}" hint-placeholder-val="{{ false }}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">
+        <sc-for list="{{ groups }}" as="group" hint-placeholder-count="3">
+          <section style="background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:6px 6px 8px">
+            <div style="display:flex;align-items:center;gap:10px;padding:13px 14px 11px">
+              <h2 style="margin:0;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:13.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--navy)">{{ group.name }}</h2>
+              <span style="flex:1;height:1px;background:var(--line)"></span>
+              <span style="font-size:12px;font-weight:600;color:var(--text-dim)">{{ group.count }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ group.links }}" as="link" hint-placeholder-count="4">
+                <div draggable="true" onDragStart="{{ link.onDragStart }}" onDragOver="{{ link.onDragOver }}" onDrop="{{ link.onDrop }}" style="display:flex;align-items:center;border-radius:12px" style-hover="background:var(--surface2)">
+                  <a href="{{ link.url }}" target="_blank" rel="noopener" onClick="{{ link.onOpen }}" style="flex:1;display:flex;align-items:center;gap:12px;padding:10px 8px 10px 10px;min-width:0;color:var(--text)">
+                    <span style="{{ link.dotStyle }}"></span>
+                    <span style="font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ link.name }}</span>
+                    <span style="margin-left:auto;font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44%">{{ link.host }}</span>
+                  </a>
+                  <div style="display:flex;gap:2px;padding-right:8px">
+                    <button onClick="{{ link.onFav }}" title="Pin" style="{{ link.favStyle }}">★</button>
+                    <button onClick="{{ link.onEdit }}" title="Edit" style="width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:var(--text-dim);font-size:12px;cursor:pointer;opacity:.55" style-hover="opacity:1;background:var(--bg2)">✎</button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+      <div style="text-align:center;padding:70px 20px;border:1px dashed var(--line-strong);border-radius:20px;color:var(--text-dim)">
+        <div style="font-size:17px;font-weight:600;color:var(--text);margin-bottom:6px">Nothing matches “{{ query }}”</div>
+        <div style="font-size:14px">Press ↵ to search the web instead.</div>
+      </div>
+    </sc-if>
+
+    <footer style="display:flex;align-items:center;gap:10px;padding-top:6px;font-size:12.5px;color:var(--text-dim)">
+      <span>Drag a tile to reorder · ★ to pin · saved in this browser</span>
+      <span style="flex:1;height:1px;background:var(--line)"></span>
+      <button onClick="{{ resetAll }}" style="border:0;background:transparent;color:var(--text-dim);font-size:12.5px;cursor:pointer;text-decoration:underline" style-hover="color:var(--navy)">Reset to defaults</button>
+    </footer>
+  </div>
+
+  <sc-if value="{{ modalOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeModal }}" style="position:fixed;inset:0;background:rgba(12,19,48,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px;z-index:50">
+      <div onClick="{{ stop }}" style="width:100%;max-width:440px;background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow-lift);padding:24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+          <h3 style="margin:0;font-size:19px;font-weight:700">{{ modalTitle }}</h3>
+          <span style="flex:1"></span>
+          <button onClick="{{ closeModal }}" style="width:30px;height:30px;border-radius:9px;border:0;background:var(--surface2);color:var(--text-dim);font-size:14px;cursor:pointer" style-hover="color:var(--text)">✕</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim)">Name
+            <input value="{{ draftName }}" onChange="{{ onDraftName }}" placeholder="Stock Manager" style="border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:11px;padding:11px 13px;font-size:15px;font-weight:500;outline:none;text-transform:none;letter-spacing:normal">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim)">URL
+            <input value="{{ draftUrl }}" onChange="{{ onDraftUrl }}" placeholder="https://…" style="border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:11px;padding:11px 13px;font-size:15px;font-weight:500;outline:none;text-transform:none;letter-spacing:normal">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim)">Group
+            <input value="{{ draftGroup }}" onChange="{{ onDraftGroup }}" placeholder="Operations" list="qos-groups" style="border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:11px;padding:11px 13px;font-size:15px;font-weight:500;outline:none;text-transform:none;letter-spacing:normal">
+          </label>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:22px">
+          <sc-if value="{{ isEditing }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ deleteLink }}" style="height:42px;padding:0 16px;border-radius:11px;border:1px solid var(--line);background:transparent;color:#C2415A;font-size:14px;font-weight:600;cursor:pointer" style-hover="border-color:#C2415A">Delete</button>
+          </sc-if>
+          <span style="flex:1"></span>
+          <button onClick="{{ closeModal }}" style="height:42px;padding:0 18px;border-radius:11px;border:1px solid var(--line);background:transparent;color:var(--text);font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
+          <button onClick="{{ saveLink }}" style="height:42px;padding:0 22px;border-radius:11px;border:0;background:var(--navy);color:#fff;font-size:14px;font-weight:600;cursor:pointer" style-hover="background:var(--navy-soft)">Save</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light' | 'dark'&quot;},&quot;layout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;grouped&quot;,&quot;compact&quot;],&quot;default&quot;:&quot;grouped&quot;,&quot;tsType&quot;:&quot;'grouped' | 'compact'&quot;}}">
+const KEY = 'qos-dash-v1';
+const DEFAULTS = [
+  { name: 'Password Manager', url: 'https://vault.qosfc.com', group: 'Operations', fav: true },
+  { name: 'Back Office Till Manager', url: 'https://backoffice.qosfc.com', group: 'Operations', fav: true },
+  { name: 'Stock Manager', url: 'https://stock.qosfc.com', group: 'Operations', fav: true },
+  { name: 'Invoicing', url: 'https://invoicing.qosfc.com', group: 'Operations', fav: true },
+  { name: 'Rota & Shifts', url: 'https://rota.qosfc.com', group: 'Operations' },
+  { name: 'Ticketing Admin', url: 'https://tickets.qosfc.com', group: 'Matchday' },
+  { name: 'Hospitality Bookings', url: 'https://hospitality.qosfc.com', group: 'Matchday' },
+  { name: 'Stadium Access Control', url: 'https://access.qosfc.com', group: 'Matchday' },
+  { name: 'Matchday Programme CMS', url: 'https://programme.qosfc.com', group: 'Matchday' },
+  { name: 'Club Website CMS', url: 'https://qosfc.com/wp-admin', group: 'Comms & Media' },
+  { name: 'Club Shop Admin', url: 'https://shop.qosfc.com/admin', group: 'Comms & Media' },
+  { name: 'Mailing List', url: 'https://mail.qosfc.com', group: 'Comms & Media' },
+  { name: 'Social Scheduler', url: 'https://buffer.com', group: 'Comms & Media' },
+  { name: 'Staff Email', url: 'https://mail.google.com', group: 'Admin & Finance' },
+  { name: 'Shared Drive', url: 'https://drive.google.com', group: 'Admin & Finance' },
+  { name: 'Accounts', url: 'https://xero.com', group: 'Admin & Finance' },
+  { name: 'HMRC Gateway', url: 'https://www.gov.uk/log-in-hmrc-online-services', group: 'Admin & Finance' },
+  { name: 'Companies House', url: 'https://find-and-update.company-information.service.gov.uk', group: 'Admin & Finance' },
+  { name: 'SPFL Club Portal', url: 'https://spfl.co.uk', group: 'League & Football' },
+  { name: 'Scottish FA Portal', url: 'https://scottishfa.co.uk', group: 'League & Football' }
+];
+const HUES = [258, 232, 212, 282, 196, 244];
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      links: null, recents: [], theme: props.theme || 'light', layout: props.layout || 'grouped',
+      query: '', modalOpen: false, editId: null, draft: { name: '', url: '', group: '' }
+    };
+    this.drag = null;
+  }
+
+  componentDidMount() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+    if (saved && Array.isArray(saved.links)) {
+      this.setState({ links: saved.links, recents: saved.recents || [], theme: saved.theme || this.state.theme, layout: saved.layout || this.state.layout });
+    } else {
+      this.setState({ links: DEFAULTS.map((l, i) => ({ ...l, id: 'l' + i })) });
+    }
+  }
+
+  persist(patch) {
+    this.setState(patch, () => {
+      const { links, recents, theme, layout } = this.state;
+      try { localStorage.setItem(KEY, JSON.stringify({ links, recents, theme, layout })); } catch (e) {}
+    });
+  }
+
+  host(url) { try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return url.replace(/^https?:\/\//, '').split('/')[0]; } }
+  initials(name) {
+    const w = name.replace(/[^\w\s&]/g, ' ').split(/\s+/).filter(Boolean);
+    return ((w[0] || '?')[0] + (w[1] ? w[1][0] : '')).toUpperCase();
+  }
+  hueFor(name) { let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 997; return HUES[h % HUES.length]; }
+
+  open(link) {
+    const recents = [link.id, ...this.state.recents.filter(id => id !== link.id)].slice(0, 6);
+    this.persist({ recents });
+  }
+
+  move(fromId, toId) {
+    if (!fromId || fromId === toId) return;
+    const links = this.state.links.slice();
+    const from = links.findIndex(l => l.id === fromId), to = links.findIndex(l => l.id === toId);
+    if (from < 0 || to < 0) return;
+    const [item] = links.splice(from, 1);
+    item.group = links[to > from ? to - 1 : to].group;
+    links.splice(to, 0, item);
+    this.persist({ links });
+  }
+
+  decorate(link) {
+    const hue = this.hueFor(link.name);
+    return {
+      ...link,
+      host: this.host(link.url),
+      initials: this.initials(link.name),
+      badgeStyle: `display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex:none;border-radius:11px;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:16px;font-weight:700;letter-spacing:.02em;color:oklch(0.42 0.14 ${hue});background:oklch(0.93 0.045 ${hue});border:1px solid oklch(0.87 0.06 ${hue})`,
+      dotStyle: `width:9px;height:9px;flex:none;border-radius:3px;background:oklch(0.58 0.15 ${hue})`,
+      favStyle: `width:26px;height:26px;border-radius:8px;border:0;background:transparent;font-size:13px;cursor:pointer;color:${link.fav ? 'var(--navy)' : 'var(--text-dim)'};opacity:${link.fav ? 1 : 0.5}`,
+      onOpen: () => this.open(link),
+      onFav: (e) => { e.preventDefault(); e.stopPropagation(); this.persist({ links: this.state.links.map(l => l.id === link.id ? { ...l, fav: !l.fav } : l) }); },
+      onEdit: (e) => { e.preventDefault(); e.stopPropagation(); this.setState({ modalOpen: true, editId: link.id, draft: { name: link.name, url: link.url, group: link.group } }); },
+      onDragStart: (e) => { this.drag = link.id; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', link.id); } catch (err) {} },
+      onDragOver: (e) => { e.preventDefault(); },
+      onDrop: (e) => { e.preventDefault(); this.move(this.drag, link.id); this.drag = null; }
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const all = s.links || [];
+    const q = s.query.trim().toLowerCase();
+    const match = l => !q || l.name.toLowerCase().includes(q) || l.url.toLowerCase().includes(q) || (l.group || '').toLowerCase().includes(q);
+    const visible = all.filter(match).map(l => this.decorate(l));
+
+    const groupNames = [];
+    visible.forEach(l => { if (!groupNames.includes(l.group)) groupNames.push(l.group); });
+    const groups = groupNames.map(name => {
+      const links = visible.filter(l => l.group === name);
+      return { name, links, count: links.length };
+    });
+
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    const tab = on => `border:0;background:${on ? 'var(--navy)' : 'transparent'};color:${on ? '#fff' : 'var(--text-dim)'};font-size:13px;font-weight:600;padding:7px 15px;border-radius:999px;cursor:pointer`;
+
+    return {
+      theme: s.theme, themeIcon: s.theme === 'dark' ? '☀' : '☾',
+      greeting, query: s.query,
+      searchHint: q ? (visible.length + ' match' + (visible.length === 1 ? '' : 'es')) : 'Web search ↵',
+      groups,
+      isGrouped: s.layout === 'grouped' && visible.length > 0,
+      isCompact: s.layout === 'compact' && visible.length > 0,
+      isEmpty: all.length > 0 && visible.length === 0,
+      favourites: visible.filter(l => l.fav),
+      showFavourites: !q && visible.some(l => l.fav),
+      recents: s.recents.map(id => all.find(l => l.id === id)).filter(Boolean).map(l => this.decorate(l)),
+      showRecents: !q && s.recents.length > 0,
+      tabGroupedStyle: tab(s.layout === 'grouped'),
+      tabCompactStyle: tab(s.layout === 'compact'),
+      setGrouped: () => this.persist({ layout: 'grouped' }),
+      setCompact: () => this.persist({ layout: 'compact' }),
+      toggleTheme: () => this.persist({ theme: s.theme === 'dark' ? 'light' : 'dark' }),
+      onQuery: e => this.setState({ query: e.target.value }),
+      onSearchKey: e => {
+        if (e.key !== 'Enter') return;
+        const first = visible[0];
+        if (first && q) { this.open(first); window.open(first.url, '_blank', 'noopener'); }
+        else if (q) window.open('https://www.google.com/search?q=' + encodeURIComponent(s.query), '_blank', 'noopener');
+      },
+      modalOpen: s.modalOpen,
+      modalTitle: s.editId ? 'Edit link' : 'Add a link',
+      isEditing: !!s.editId,
+      draftName: s.draft.name, draftUrl: s.draft.url, draftGroup: s.draft.group,
+      onDraftName: e => this.setState({ draft: { ...this.state.draft, name: e.target.value } }),
+      onDraftUrl: e => this.setState({ draft: { ...this.state.draft, url: e.target.value } }),
+      onDraftGroup: e => this.setState({ draft: { ...this.state.draft, group: e.target.value } }),
+      openAdd: () => this.setState({ modalOpen: true, editId: null, draft: { name: '', url: '', group: groupNames[0] || 'Operations' } }),
+      closeModal: () => this.setState({ modalOpen: false, editId: null }),
+      stop: e => e.stopPropagation(),
+      saveLink: () => {
+        const d = this.state.draft;
+        if (!d.name.trim() || !d.url.trim()) return;
+        let url = d.url.trim();
+        if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+        const group = d.group.trim() || 'Other';
+        let links;
+        if (s.editId) links = all.map(l => l.id === s.editId ? { ...l, name: d.name.trim(), url, group } : l);
+        else links = all.concat([{ id: 'l' + Date.now(), name: d.name.trim(), url, group }]);
+        this.persist({ links, modalOpen: false, editId: null });
+      },
+      deleteLink: () => this.persist({ links: all.filter(l => l.id !== s.editId), recents: s.recents.filter(id => id !== s.editId), modalOpen: false, editId: null }),
+      resetAll: () => this.persist({ links: DEFAULTS.map((l, i) => ({ ...l, id: 'l' + i })), recents: [] })
+    };
+  }
+}
+</script>
+</body>
+</html>
