@@ -18,7 +18,7 @@ services:
     image: qos-staff-dashboard:latest
     container_name: qos-dashboard
     ports:
-      - "${DASHBOARD_PORT:-8080}:80"
+      - "${DASHBOARD_PORT:-1919}:80"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
