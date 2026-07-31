@@ -42,6 +42,19 @@
   .reset-btn:hover{color:var(--navy)!important}
   .delete-btn:hover{border-color:#C2415A!important}
   .link-btn{-webkit-tap-highlight-color:transparent}
+
+  /* Drag & drop feedback */
+  [data-id]{cursor:grab}
+  [data-id]:active{cursor:grabbing}
+  .link-btn{cursor:pointer}
+  .dragging{opacity:.4}
+  .drop-target{outline:2px dashed var(--gc,var(--navy));outline-offset:2px;border-radius:12px}
+  .chev:hover{opacity:.7}
+  /* Native colour-input chrome reset */
+  input[type=color]{-webkit-appearance:none;appearance:none}
+  input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+  input[type=color]::-webkit-color-swatch{border:none;border-radius:4px}
+  input[type=color]::-moz-color-swatch{border:none;border-radius:4px}
 </style>
 </head>
 <body>
@@ -56,9 +69,10 @@
 
   // ---- state ----
   var state = {
-    links: [],           // [{id,name,url,group,fav}]
+    links: [],           // [{id,name,url,group,fav,color?,icon?}]
     recents: [],         // link ids, most-recent first, max 6
     groupColors: {},     // { groupName: '#rrggbb' } — editable per-tab colour
+    collapsed: {},       // { groupName: true } — collapsed groups (per browser)
     theme: 'light',
     layout: 'grouped',
     query: '',
@@ -89,6 +103,81 @@
     return HUES[h % HUES.length];
   }
   function gcFor(name) { return state.groupColors[name] || DEFAULT_GC; }
+
+  function hexToRgba(hex, a) {
+    var h = String(hex).replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var n = parseInt(h, 16);
+    if (isNaN(n)) return 'rgba(90,100,140,' + a + ')';
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  // ---- brand icons (inline SVG, self-contained/offline) ----
+  var BRANDS = {
+    google: '<svg viewBox="0 0 48 48" width="22" height="22"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.5 0 10.5-2.1 14.3-5.6l-6.6-5.6C29.7 34.5 27 35.5 24 35.5c-5.3 0-9.7-3.4-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.4l6.6 5.6C41.9 35.7 44 30.3 44 24c0-1.3-.1-2.3-.4-3.5z"/></svg>',
+    gmail: '<svg viewBox="0 0 24 24" width="22" height="22"><path fill="#EA4335" d="M2 5.6C2 4.7 2.7 4 3.6 4L12 10.4 20.4 4c.9 0 1.6.7 1.6 1.6v12.8c0 .9-.7 1.6-1.6 1.6H19V9.2l-7 5.2-7-5.2V20H3.6C2.7 20 2 19.3 2 18.4V5.6z"/></svg>',
+    drive: '<svg viewBox="0 0 87.3 78" width="22" height="22"><path fill="#0066da" d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"/><path fill="#00ac47" d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z"/><path fill="#ea4335" d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z"/><path fill="#00832d" d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"/><path fill="#2684fc" d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"/><path fill="#ffba00" d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z"/></svg>',
+    docs: '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="4" y="2" width="16" height="20" rx="2" fill="#7248B9"/><rect x="7" y="7" width="10" height="1.6" fill="#fff"/><rect x="7" y="11" width="10" height="1.6" fill="#fff"/><rect x="7" y="15" width="6" height="1.6" fill="#fff"/></svg>',
+    microsoft: '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="2" y="2" width="9" height="9" fill="#F25022"/><rect x="13" y="2" width="9" height="9" fill="#7FBA00"/><rect x="2" y="13" width="9" height="9" fill="#00A4EF"/><rect x="13" y="13" width="9" height="9" fill="#FFB900"/></svg>',
+    onedrive: '<svg viewBox="0 0 24 24" width="22" height="22"><path fill="#0364B8" d="M13.2 7.2a5 5 0 0 0-4.7 3.1A4 4 0 0 0 5 17.5h12.7a3.4 3.4 0 0 0 .2-6.8 5 5 0 0 0-4.7-3.5z"/></svg>',
+    outlook: '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="9" y="5" width="13" height="14" rx="1.2" fill="#0A2767"/><rect x="9" y="5" width="13" height="7" fill="#0364B8"/><rect x="1" y="4" width="12" height="16" rx="2" fill="#0F6CBD"/><ellipse cx="7" cy="12" rx="3.1" ry="3.5" fill="none" stroke="#fff" stroke-width="1.6"/></svg>',
+    amazon: '<svg viewBox="0 0 24 24" width="22" height="22"><path fill="#FF9900" d="M4 16c4.5 3 11.5 3 16 .2.4-.2.7.2.4.5C17.8 20 13 21 9 19.4 6.7 18.5 5 17.2 4 16z"/><path fill="#221F1F" d="M13 5c-2.5 0-4 1.3-4.3 3l2 .2c.1-1 .8-1.5 2-1.5 1.3 0 1.8.7 1.8 2v.4c-3.7 0-5.8 1.1-5.8 3.6 0 1.6 1.2 2.6 3 2.6 1.4 0 2.3-.5 3-1.4.2.7.9 1.2 1.7 1.3l1-1.4c-.6-.3-.8-.7-.8-1.6V8.6C16.6 6.2 15.4 5 13 5zm1.5 6.6c0 1.3-.8 2.1-2 2.1-.8 0-1.3-.5-1.3-1.2 0-1.2 1.1-1.7 3.3-1.7z"/></svg>',
+    xero: '<svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="10" fill="#13B5EA"/><path d="M9 9l6 6M15 9l-6 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    wix: '<svg viewBox="0 0 24 24" width="22" height="22"><text x="12" y="16" font-family="Arial,sans-serif" font-weight="700" font-size="8.5" fill="#0C6EFC" text-anchor="middle">WIX</text></svg>',
+    dropbox: '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="#0061FF" d="M7 3 2 6.3l5 3.2 5-3.2zM17 3l-5 3.3 5 3.2 5-3.2zM2 12.7l5 3.2 5-3.2-5-3.2zM17 9.5l-5 3.2 5 3.2 5-3.2zM7 17.5l5 3.2 5-3.2-5-3.1z"/></svg>',
+    postoffice: '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="3" y="3" width="18" height="18" rx="3" fill="#E4002B"/><text x="12" y="16" font-family="Arial,sans-serif" font-weight="700" font-size="10" fill="#fff" text-anchor="middle">PO</text></svg>',
+    globe: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#5C6588" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>'
+  };
+  // aliases → canonical brand key
+  var BRAND_ALIAS = { forms: 'docs', sheets: 'docs', office: 'microsoft', office365: 'microsoft', sharepoint: 'onedrive', teams: 'microsoft', hotmail: 'outlook' };
+  function brandKey(k) { k = String(k || '').toLowerCase().trim(); return BRAND_ALIAS[k] || (BRANDS[k] ? k : ''); }
+
+  // Guess a brand icon from a link's URL / name.
+  function detectBrand(url, name) {
+    var h = host(url).toLowerCase();
+    var n = (name || '').toLowerCase();
+    var s = h + ' ' + n;
+    if (/mail\.google|gmail/.test(s)) return 'gmail';
+    if (/drive\.google/.test(s)) return 'drive';
+    if (/docs\.google|forms\.google|\bforms\b|google\s*forms|sheets/.test(s)) return 'docs';
+    if (/google/.test(s)) return 'google';
+    if (/postoffice|post ?office|drop.?and.?go/.test(s)) return 'postoffice';
+    if (/onedrive|1drv|live\.com|sharepoint/.test(s)) return 'onedrive';
+    if (/outlook|hotmail/.test(s)) return 'outlook';
+    if (/microsoft|office\.com|office365|office365|\bms ?office\b|\bteams\b/.test(s)) return 'microsoft';
+    if (/amazon/.test(s)) return 'amazon';
+    if (/xero/.test(s)) return 'xero';
+    if (/wix/.test(s)) return 'wix';
+    if (/dropbox/.test(s)) return 'dropbox';
+    return '';
+  }
+
+  // Resolve accent colours for a link (custom hex, else name-hashed hue).
+  function accent(l) {
+    if (l.color) {
+      return { text: l.color, bg: hexToRgba(l.color, 0.14), border: hexToRgba(l.color, 0.34), dot: l.color };
+    }
+    var hue = hueFor(l.name);
+    return {
+      text: 'oklch(0.42 0.14 ' + hue + ')',
+      bg: 'oklch(0.93 0.045 ' + hue + ')',
+      border: 'oklch(0.87 0.06 ' + hue + ')',
+      dot: 'oklch(0.58 0.15 ' + hue + ')'
+    };
+  }
+
+  // Badge inner content: explicit icon, else auto-detected brand, else initials.
+  function badgeInner(l) {
+    var raw = (l.icon || '').trim();
+    var key = brandKey(raw || detectBrand(l.url, l.name));
+    if (key && BRANDS[key]) return BRANDS[key];
+    if (/^https?:\/\//i.test(raw)) {
+      return '<img src="' + esc(raw) + '" alt="" style="width:24px;height:24px;object-fit:contain" ' +
+        'onerror="this.parentNode.textContent=\'' + esc(initials(l.name)) + '\'">';
+    }
+    if (raw) return '<span style="font-size:20px;line-height:1">' + esc(raw) + '</span>'; // emoji / short text
+    return esc(initials(l.name));
+  }
   function badgeStyle(hue) {
     return "display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex:none;border-radius:11px;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:16px;font-weight:700;letter-spacing:.02em;color:oklch(0.42 0.14 " + hue + ");background:oklch(0.93 0.045 " + hue + ");border:1px solid oklch(0.87 0.06 " + hue + ")";
   }
@@ -107,6 +196,7 @@
         links: state.links,
         recents: state.recents,
         groupColors: state.groupColors,
+        collapsed: state.collapsed,
         theme: state.theme,
         layout: state.layout
       }));
@@ -119,13 +209,17 @@
     var cfgLinks = (config && Array.isArray(config.links)) ? config.links : [];
     var cfgColors = (config && config.groupColors) || {};
     var seeded = cfgLinks.map(function (l, i) {
-      return { id: 'l' + i, name: l.name, url: l.url, group: l.group || 'Other', fav: !!l.fav };
+      var o = { id: 'l' + i, name: l.name, url: l.url, group: l.group || 'Other', fav: !!l.fav };
+      if (l.icon) o.icon = l.icon;
+      if (l.color) o.color = l.color;
+      return o;
     });
 
     // Preserve personal UI prefs from any saved state.
     if (saved) {
       state.theme = saved.theme || state.theme;
       state.layout = saved.layout || state.layout;
+      state.collapsed = saved.collapsed || {};
     }
 
     // Re-seed links + group colours whenever the shared config version changes.
@@ -173,11 +267,14 @@
 
   // ---- derived view ----
   function decorate(l) {
-    var hue = hueFor(l.name);
+    var ac = accent(l);
+    var badge = "display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex:none;border-radius:11px;overflow:hidden;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:16px;font-weight:700;letter-spacing:.02em;color:" + ac.text + ";background:" + ac.bg + ";border:1px solid " + ac.border;
     return {
       id: l.id, name: l.name, url: l.url, group: l.group, fav: l.fav,
       host: host(l.url), initials: initials(l.name),
-      badge: badgeStyle(hue), dot: dotStyle(hue), favS: favStyle(l.fav)
+      badge: badge, inner: badgeInner(l),
+      dot: 'width:9px;height:9px;flex:none;border-radius:3px;background:' + ac.dot,
+      favS: favStyle(l.fav)
     };
   }
   function view() {
@@ -264,7 +361,7 @@
   function tileHTML(l) {
     // pinned tile (horizontal)
     return '<a class="tile link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" draggable="true" data-id="' + esc(l.id) + '" style="position:relative;display:flex;align-items:center;gap:13px;background:var(--tile);border:1px solid var(--line);border-radius:16px;padding:15px;box-shadow:var(--shadow);color:var(--text);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease">' +
-      '<span style="' + l.badge + '">' + esc(l.initials) + '</span>' +
+      '<span style="' + l.badge + '">' + l.inner + '</span>' +
       '<span style="display:flex;flex-direction:column;gap:2px;min-width:0">' +
         '<span style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.name) + '</span>' +
         '<span style="font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.host) + '</span>' +
@@ -274,8 +371,8 @@
 
   function cardHTML(l) {
     return '<div class="card" draggable="true" data-id="' + esc(l.id) + '" style="position:relative;background:var(--tile);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease">' +
-      '<a class="link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" style="display:flex;flex-direction:column;gap:12px;padding:17px 17px 15px;color:var(--text)">' +
-        '<span style="' + l.badge + '">' + esc(l.initials) + '</span>' +
+      '<a class="link-btn" draggable="false" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" style="display:flex;flex-direction:column;gap:12px;padding:17px 17px 15px;color:var(--text)">' +
+        '<span style="' + l.badge + '">' + l.inner + '</span>' +
         '<span style="display:flex;flex-direction:column;gap:3px;min-width:0">' +
           '<span style="font-size:16px;font-weight:600;letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.name) + '</span>' +
           '<span style="font-size:12.5px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.host) + '</span>' +
@@ -290,7 +387,7 @@
 
   function compactRowHTML(l) {
     return '<div class="compact-row" draggable="true" data-id="' + esc(l.id) + '" style="display:flex;align-items:center;border-radius:12px">' +
-      '<a class="link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" style="flex:1;display:flex;align-items:center;gap:12px;padding:10px 8px 10px 10px;min-width:0;color:var(--text)">' +
+      '<a class="link-btn" draggable="false" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" style="flex:1;display:flex;align-items:center;gap:12px;padding:10px 8px 10px 10px;min-width:0;color:var(--text)">' +
         '<span style="' + l.dot + '"></span>' +
         '<span style="font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.name) + '</span>' +
         '<span style="margin-left:auto;font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44%">' + esc(l.host) + '</span>' +
@@ -311,9 +408,10 @@
   function colorSwatch(name) {
     return '<input type="color" data-gc="' + esc(name) + '" value="' + esc(gcFor(name)) + '" title="Change ' + esc(name) + ' colour" class="gc-swatch" style="width:20px;height:20px;flex:none;padding:0;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer">';
   }
-  function groupHeader(g, fontSize) {
-    return '<div style="display:flex;align-items:center;gap:10px">' +
-      '<h2 style="margin:0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:' + fontSize + ';font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--gc)">' + esc(g.name) + '</h2>' +
+  function groupHeader(g, fontSize, collapsed) {
+    return '<div style="display:flex;align-items:center;gap:8px">' +
+      '<button data-act="collapse" data-group="' + esc(g.name) + '" class="chev" title="' + (collapsed ? 'Expand' : 'Collapse') + '" style="width:22px;height:22px;flex:none;display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:var(--gc);font-size:11px;cursor:pointer;transition:transform .15s ease;transform:rotate(' + (collapsed ? '-90deg' : '0deg') + ')">▼</button>' +
+      '<h2 style="margin:0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:' + fontSize + ';font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--gc);cursor:pointer" data-act="collapse" data-group="' + esc(g.name) + '">' + esc(g.name) + '</h2>' +
       '<span style="flex:1;height:1px;background:var(--gc);opacity:.35"></span>' +
       '<span style="font-size:12px;font-weight:600;color:var(--gc)">' + g.count + '</span>' +
       colorSwatch(g.name) +
@@ -358,17 +456,21 @@
     } else if (state.layout === 'grouped') {
       html += '<div style="display:flex;flex-direction:column;gap:30px">' +
         v.groups.map(function (g) {
+          var collapsed = !!state.collapsed[g.name];
           return '<section style="display:flex;flex-direction:column;gap:14px;--gc:' + gcFor(g.name) + '">' +
-            groupHeader(g, '14px') +
-            '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px">' +
-              g.links.map(cardHTML).join('') + '</div></section>';
+            groupHeader(g, '14px', collapsed) +
+            (collapsed ? '' :
+              '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px">' +
+              g.links.map(cardHTML).join('') + '</div>') + '</section>';
         }).join('') + '</div>';
     } else {
-      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">' +
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;align-items:start">' +
         v.groups.map(function (g) {
-          return '<section style="background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:6px 6px 8px;--gc:' + gcFor(g.name) + '">' +
-            '<div style="padding:13px 14px 11px">' + groupHeader(g, '13.5px') + '</div>' +
-            '<div style="display:flex;flex-direction:column">' + g.links.map(compactRowHTML).join('') + '</div></section>';
+          var collapsed = !!state.collapsed[g.name];
+          return '<section style="background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:6px 6px ' + (collapsed ? '6px' : '8px') + ';--gc:' + gcFor(g.name) + '">' +
+            '<div style="padding:13px 14px 11px">' + groupHeader(g, '13.5px', collapsed) + '</div>' +
+            (collapsed ? '' :
+              '<div style="display:flex;flex-direction:column">' + g.links.map(compactRowHTML).join('') + '</div>') + '</section>';
         }).join('') + '</div>';
     }
 
@@ -381,14 +483,17 @@
     state.modalOpen = true;
     state.editId = editId || null;
     var v = view();
-    var draft = { name: '', url: '', group: v.groupNames[0] || 'Operations' };
+    var draft = { name: '', url: '', group: v.groupNames[0] || 'Operations', icon: '', color: '' };
     if (editId) {
       var l = findLink(editId);
-      if (l) draft = { name: l.name, url: l.url, group: l.group };
+      if (l) draft = { name: l.name, url: l.url, group: l.group, icon: l.icon || '', color: l.color || '' };
     }
+    var autoColor = !draft.color;
+    var colorVal = draft.color || gcFor(draft.group);
 
     var suggestions = [];
     state.links.forEach(function (l) { if (suggestions.indexOf(l.group) < 0) suggestions.push(l.group); });
+    var iconKeys = ['google', 'gmail', 'drive', 'docs', 'microsoft', 'onedrive', 'outlook', 'amazon', 'xero', 'wix', 'dropbox', 'postoffice', 'globe'];
 
     var m = document.getElementById('modal');
     m.innerHTML =
@@ -404,6 +509,15 @@
             field('URL', 'd-url', draft.url, 'https://…') +
             field('Group', 'd-group', draft.group, 'Operations', 'qos-groups') +
             '<datalist id="qos-groups">' + suggestions.map(function (s) { return '<option value="' + esc(s) + '">'; }).join('') + '</datalist>' +
+            field('Icon', 'd-icon', draft.icon, 'Auto · or google, gmail, emoji, image URL', 'qos-icons') +
+            '<datalist id="qos-icons">' + iconKeys.map(function (s) { return '<option value="' + esc(s) + '">'; }).join('') + '</datalist>' +
+            '<div style="display:flex;flex-direction:column;gap:6px">' +
+              '<span style="font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim)">Colour</span>' +
+              '<div style="display:flex;align-items:center;gap:12px">' +
+                '<input type="color" id="d-color" value="' + esc(colorVal) + '" style="width:46px;height:38px;flex:none;padding:0;border:1px solid var(--line);border-radius:11px;background:none;cursor:pointer">' +
+                '<label style="display:flex;align-items:center;gap:7px;font-size:14px;font-weight:500;color:var(--text);cursor:pointer"><input type="checkbox" id="d-color-auto"' + (autoColor ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer"> Auto (from name)</label>' +
+              '</div>' +
+            '</div>' +
           '</div>' +
           '<div style="display:flex;align-items:center;gap:10px;margin-top:22px">' +
             (editId ? '<button class="delete-btn" data-act="delete" style="height:42px;padding:0 16px;border-radius:11px;border:1px solid var(--line);background:transparent;color:#C2415A;font-size:14px;font-weight:600;cursor:pointer">Delete</button>' : '') +
@@ -434,14 +548,24 @@
     var name = (document.getElementById('d-name').value || '').trim();
     var url = (document.getElementById('d-url').value || '').trim();
     var group = (document.getElementById('d-group').value || '').trim() || 'Other';
+    var icon = (document.getElementById('d-icon').value || '').trim();
+    var auto = document.getElementById('d-color-auto').checked;
+    var color = auto ? '' : (document.getElementById('d-color').value || '');
     if (!name || !url) return;
     if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
 
     if (state.editId) {
       var l = findLink(state.editId);
-      if (l) { l.name = name; l.url = url; l.group = group; }
+      if (l) {
+        l.name = name; l.url = url; l.group = group;
+        if (icon) l.icon = icon; else delete l.icon;
+        if (color) l.color = color; else delete l.color;
+      }
     } else {
-      state.links.push({ id: 'l' + Date.now(), name: name, url: url, group: group, fav: false });
+      var link = { id: 'l' + Date.now(), name: name, url: url, group: group, fav: false };
+      if (icon) link.icon = icon;
+      if (color) link.color = color;
+      state.links.push(link);
     }
     persist();
     closeModal();
@@ -490,10 +614,14 @@
     fetchConfig().then(function (config) {
       var cfgLinks = (config && Array.isArray(config.links)) ? config.links : [];
       state.links = cfgLinks.map(function (l, i) {
-        return { id: 'l' + i, name: l.name, url: l.url, group: l.group || 'Other', fav: !!l.fav };
+        var o = { id: 'l' + i, name: l.name, url: l.url, group: l.group || 'Other', fav: !!l.fav };
+        if (l.icon) o.icon = l.icon;
+        if (l.color) o.color = l.color;
+        return o;
       });
       state.recents = [];
       state.groupColors = (config && config.groupColors) || {};
+      state.collapsed = {};
       state.version = (config && config.version) || state.version;
       persist();
       renderContent();
@@ -521,7 +649,15 @@
     else if (act === 'close') closeModal();
     else if (act === 'save') saveLink();
     else if (act === 'delete') deleteLink();
+    else if (act === 'collapse') toggleCollapse(btn.getAttribute('data-group'));
   });
+
+  function toggleCollapse(name) {
+    if (state.collapsed[name]) delete state.collapsed[name];
+    else state.collapsed[name] = true;
+    persist();
+    renderContent();
+  }
 
   // Editable tab colours: live-update the group's --gc while the picker is open,
   // then persist. No re-render, so the native colour picker stays open.
@@ -545,25 +681,42 @@
     if (e.target && e.target.id === 'overlay') closeModal();
   });
 
-  // Drag & drop reorder (delegated)
+  // Drag & drop reorder (delegated) with visual feedback.
+  function clearDropTargets() {
+    document.querySelectorAll('.drop-target').forEach(function (el) { el.classList.remove('drop-target'); });
+  }
   document.addEventListener('dragstart', function (e) {
     var el = e.target.closest('[data-id]');
     if (!el) return;
     drag = el.getAttribute('data-id');
+    el.classList.add('dragging');
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
       try { e.dataTransfer.setData('text/plain', drag); } catch (err) {}
     }
   });
   document.addEventListener('dragover', function (e) {
-    if (e.target.closest('[data-id]')) e.preventDefault();
+    var el = e.target.closest('[data-id]');
+    if (!el) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    if (el.getAttribute('data-id') !== drag && !el.classList.contains('drop-target')) {
+      clearDropTargets();
+      el.classList.add('drop-target');
+    }
   });
   document.addEventListener('drop', function (e) {
     var el = e.target.closest('[data-id]');
+    clearDropTargets();
     if (!el) return;
     e.preventDefault();
     move(drag, el.getAttribute('data-id'));
     drag = null;
+  });
+  document.addEventListener('dragend', function () {
+    drag = null;
+    clearDropTargets();
+    document.querySelectorAll('.dragging').forEach(function (el) { el.classList.remove('dragging'); });
   });
 
   // Esc closes modal
@@ -588,6 +741,7 @@
         if (saved && Array.isArray(saved.links)) {
           state.links = saved.links; state.recents = saved.recents || [];
           state.groupColors = saved.groupColors || {};
+          state.collapsed = saved.collapsed || {};
           state.theme = saved.theme || state.theme; state.layout = saved.layout || state.layout;
           state.version = saved.version || 0;
         }

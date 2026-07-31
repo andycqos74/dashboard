@@ -3,8 +3,9 @@
 An internal new-tab-style start page for Queen of the South FC staff — a dashboard
 of links to the tools staff use daily (password manager, back-office till manager,
 stock manager, invoicing, etc.). Search links or the web, pin favourites, see
-recently opened links, switch between **Grouped** and **Compact** layouts, and
-toggle **light/dark**.
+recently opened links, drag tiles to reorder, collapse groups, edit each tile's
+colour and icon, switch between **Grouped** and **Compact** layouts, and toggle
+**light/dark**.
 
 Built as a static site (vanilla HTML/CSS/JS, no build step, no framework) that
 faithfully recreates the supplied design. Hosted on Docker via nginx. **No login** —
@@ -27,12 +28,29 @@ To change the links for **all** users:
 Each link entry:
 
 ```json
-{ "name": "Stock Manager", "url": "https://stock.qosfc.com", "group": "Operations", "fav": true }
+{ "name": "Stock Manager", "url": "https://stock.qosfc.com", "group": "Operations",
+  "fav": true, "icon": "onedrive", "color": "#E4002B" }
 ```
 
 - `name`, `url`, `group` — required. Links are shown under their `group` heading,
   in file order.
 - `fav` — optional; `true` puts the link in the **Pinned** row at the top.
+- `icon` — optional. A **brand key** (`google`, `gmail`, `drive`, `docs`,
+  `microsoft`, `onedrive`, `outlook`, `amazon`, `xero`, `wix`, `dropbox`,
+  `postoffice`, `globe`), an **emoji** (e.g. `"🛒"`), or an **image URL**. Omit it
+  and the dashboard **auto-detects** an icon from the URL/name (Google, OneDrive,
+  Xero, …); if it can't, it falls back to the name's initials.
+- `color` — optional hex accent for the tile's badge/dot (e.g. `"#E4002B"`). Omit
+  for an automatic colour derived from the name.
+
+### Interacting with tiles (per-browser)
+
+- **Drag** a tile onto another to reorder; dropping it into a different group
+  recategorises it.
+- Click a group's **chevron / heading** to collapse or expand that category.
+- **✎ Edit** a tile to change its name, URL, group, **icon** and **colour**; **★**
+  pins it. These edits are stored in that browser. To change things for
+  **everyone**, edit `config/links.json` (and bump `version`).
 
 Bumping `version` is what makes returning browsers pick up the new set. Without a
 bump, a browser that has already cached its copy keeps showing the old links until

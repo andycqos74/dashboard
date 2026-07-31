@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "_comment": "Shared link set for the QoS Staff Dashboard. Everyone sees these tiles. To change what everyone sees: edit this file and bump \"version\" by 1. NEVER put passwords, usernames or API keys here - this file is public and served with no login. URLs below were guessed from the entry names (the source export had none) - verify/replace them. groupColors sets each category (tab) heading colour; edit the hex or use the swatch in the header.",
+  "_comment": "Shared link set for the QoS Staff Dashboard. Everyone sees these tiles. To change what everyone sees: edit this file and bump \"version\" by 1. NEVER put passwords, usernames or API keys here - this file is public and served with no login. URLs below were guessed from the entry names (the source export had none) - verify/replace them. Per link you may add: \"color\" (hex accent for the tile badge/dot, e.g. \"#E4002B\"; omit for an auto colour from the name) and \"icon\" (a brand key like google/gmail/drive/docs/microsoft/onedrive/outlook/amazon/xero/wix/dropbox/postoffice, OR an emoji, OR an image URL; omit to auto-detect from the URL/name). groupColors sets each category (tab) heading colour - edit the hex or use the swatch in the header. Group collapse state is per-browser, not stored here.",
   "groupColors": {
     "Office": "#3A55C6",
     "Email Logins": "#2E9E6B",
