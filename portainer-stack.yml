@@ -1,0 +1,27 @@
+# QoS Staff Dashboard — Portainer stack
+#
+# Recommended deploy method: Portainer → Stacks → Add stack → "Repository".
+#   Repository URL:  <this repo>
+#   Reference:       refs/heads/claude/claude-design-dashboard-e1ov1g  (or main once merged)
+#   Compose path:    portainer-stack.yml
+# Portainer clones the repo and builds the image from the Dockerfile, so the
+# links baked in come straight from config/links.json in the repo.
+#
+# Environment variables (set in Portainer's "Environment variables" panel):
+#   DASHBOARD_PORT  host port to publish (default 8080)
+
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: qos-staff-dashboard:latest
+    container_name: qos-dashboard
+    ports:
+      - "${DASHBOARD_PORT:-8080}:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3

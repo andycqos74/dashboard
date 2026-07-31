@@ -72,6 +72,12 @@ docker run -d -p 8080:80 --name qos-dashboard qos-staff-dashboard
 (Editing links this way requires an image rebuild, or mount the file:
 `-v "$PWD/config/links.json:/usr/share/nginx/html/config/links.json:ro"`.)
 
+### Portainer
+
+Deploy as a Portainer stack (`portainer-stack.yml`) — full step-by-step in
+[`docs/PORTAINER.md`](docs/PORTAINER.md). The short version: **Stacks → Add stack →
+Repository**, point it at this repo, Compose path `portainer-stack.yml`, deploy.
+
 ### Local preview without Docker
 
 ```bash
@@ -90,6 +96,7 @@ assets/qos-crest.png     Club crest.
 nginx.conf               Serves the site; no-cache for index.html + links.json.
 Dockerfile               nginx:alpine image.
 docker-compose.yml       Runs it on :8080 with links.json mounted live.
+portainer-stack.yml      Portainer stack (Repository build method).
 design-reference.dc.html Original design prototype (reference only).
 docs/DESIGN.md           Full design handoff: tokens, screens, behaviour.
 ```
