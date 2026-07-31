@@ -4,7 +4,7 @@ services:
     image: qos-staff-dashboard
     container_name: qos-dashboard
     ports:
-      - "8080:80"
+      - "1919:80"
     restart: unless-stopped
     # Mount the shared link config as a volume so you can edit links live
     # (no rebuild needed): change config/links.json, bump "version", done.
