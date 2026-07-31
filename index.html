@@ -58,6 +58,7 @@
   var state = {
     links: [],           // [{id,name,url,group,fav}]
     recents: [],         // link ids, most-recent first, max 6
+    groupColors: {},     // { groupName: '#rrggbb' } — editable per-tab colour
     theme: 'light',
     layout: 'grouped',
     query: '',
@@ -66,6 +67,7 @@
     version: 0           // config version this browser was seeded from
   };
   var drag = null;
+  var DEFAULT_GC = '#3A55C6'; // fallback colour for a group with none set
 
   // ---- helpers ----
   function esc(s) {
@@ -86,6 +88,7 @@
     for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 997;
     return HUES[h % HUES.length];
   }
+  function gcFor(name) { return state.groupColors[name] || DEFAULT_GC; }
   function badgeStyle(hue) {
     return "display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex:none;border-radius:11px;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:16px;font-weight:700;letter-spacing:.02em;color:oklch(0.42 0.14 " + hue + ");background:oklch(0.93 0.045 " + hue + ");border:1px solid oklch(0.87 0.06 " + hue + ")";
   }
@@ -103,6 +106,7 @@
         version: state.version,
         links: state.links,
         recents: state.recents,
+        groupColors: state.groupColors,
         theme: state.theme,
         layout: state.layout
       }));
@@ -113,6 +117,7 @@
   function seedFrom(config, saved) {
     var cfgVersion = (config && config.version) || 1;
     var cfgLinks = (config && Array.isArray(config.links)) ? config.links : [];
+    var cfgColors = (config && config.groupColors) || {};
     var seeded = cfgLinks.map(function (l, i) {
       return { id: 'l' + i, name: l.name, url: l.url, group: l.group || 'Other', fav: !!l.fav };
     });
@@ -123,13 +128,15 @@
       state.layout = saved.layout || state.layout;
     }
 
-    // Re-seed links whenever the shared config version changes (or first visit).
+    // Re-seed links + group colours whenever the shared config version changes.
     if (saved && Array.isArray(saved.links) && saved.version === cfgVersion) {
       state.links = saved.links;
       state.recents = Array.isArray(saved.recents) ? saved.recents : [];
+      state.groupColors = saved.groupColors || cfgColors;
     } else {
       state.links = seeded;
       state.recents = [];
+      state.groupColors = cfgColors;
     }
     state.version = cfgVersion;
     persist();
@@ -299,6 +306,20 @@
     return '<h2 style="margin:0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:14px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:' + color + '">' + esc(text) + '</h2>';
   }
 
+  // Group header with an editable colour swatch. `--gc` is set on the parent
+  // <section>; heading / rule / count all read var(--gc).
+  function colorSwatch(name) {
+    return '<input type="color" data-gc="' + esc(name) + '" value="' + esc(gcFor(name)) + '" title="Change ' + esc(name) + ' colour" class="gc-swatch" style="width:20px;height:20px;flex:none;padding:0;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer">';
+  }
+  function groupHeader(g, fontSize) {
+    return '<div style="display:flex;align-items:center;gap:10px">' +
+      '<h2 style="margin:0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:' + fontSize + ';font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--gc)">' + esc(g.name) + '</h2>' +
+      '<span style="flex:1;height:1px;background:var(--gc);opacity:.35"></span>' +
+      '<span style="font-size:12px;font-weight:600;color:var(--gc)">' + g.count + '</span>' +
+      colorSwatch(g.name) +
+    '</div>';
+  }
+
   function renderContent() {
     var v = view();
     var hintEl = document.getElementById('hint');
@@ -337,21 +358,16 @@
     } else if (state.layout === 'grouped') {
       html += '<div style="display:flex;flex-direction:column;gap:30px">' +
         v.groups.map(function (g) {
-          return '<section style="display:flex;flex-direction:column;gap:14px">' +
-            '<div style="display:flex;align-items:center;gap:12px">' + sectionLabel(g.name, 'var(--navy)') +
-              '<span style="flex:1;height:1px;background:var(--line)"></span>' +
-              '<span style="font-size:12px;font-weight:600;color:var(--text-dim)">' + g.count + '</span></div>' +
+          return '<section style="display:flex;flex-direction:column;gap:14px;--gc:' + gcFor(g.name) + '">' +
+            groupHeader(g, '14px') +
             '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px">' +
               g.links.map(cardHTML).join('') + '</div></section>';
         }).join('') + '</div>';
     } else {
       html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">' +
         v.groups.map(function (g) {
-          return '<section style="background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:6px 6px 8px">' +
-            '<div style="display:flex;align-items:center;gap:10px;padding:13px 14px 11px">' +
-              '<h2 style="margin:0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:13.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--navy)">' + esc(g.name) + '</h2>' +
-              '<span style="flex:1;height:1px;background:var(--line)"></span>' +
-              '<span style="font-size:12px;font-weight:600;color:var(--text-dim)">' + g.count + '</span></div>' +
+          return '<section style="background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:6px 6px 8px;--gc:' + gcFor(g.name) + '">' +
+            '<div style="padding:13px 14px 11px">' + groupHeader(g, '13.5px') + '</div>' +
             '<div style="display:flex;flex-direction:column">' + g.links.map(compactRowHTML).join('') + '</div></section>';
         }).join('') + '</div>';
     }
@@ -477,6 +493,7 @@
         return { id: 'l' + i, name: l.name, url: l.url, group: l.group || 'Other', fav: !!l.fav };
       });
       state.recents = [];
+      state.groupColors = (config && config.groupColors) || {};
       state.version = (config && config.version) || state.version;
       persist();
       renderContent();
@@ -504,6 +521,23 @@
     else if (act === 'close') closeModal();
     else if (act === 'save') saveLink();
     else if (act === 'delete') deleteLink();
+  });
+
+  // Editable tab colours: live-update the group's --gc while the picker is open,
+  // then persist. No re-render, so the native colour picker stays open.
+  document.addEventListener('input', function (e) {
+    var sw = e.target.closest ? e.target.closest('input.gc-swatch') : null;
+    if (!sw) return;
+    var name = sw.getAttribute('data-gc');
+    var color = sw.value;
+    state.groupColors[name] = color;
+    // Update every section for this group (only one layout shows at a time, but be safe).
+    document.querySelectorAll('.gc-swatch').forEach(function (el) {
+      if (el.getAttribute('data-gc') !== name) return;
+      var sec = el.closest('section');
+      if (sec) sec.style.setProperty('--gc', color);
+    });
+    persist();
   });
 
   // Overlay click closes modal (but not clicks inside the dialog)
@@ -553,6 +587,7 @@
         // Config unreachable: fall back to whatever we have saved, else empty.
         if (saved && Array.isArray(saved.links)) {
           state.links = saved.links; state.recents = saved.recents || [];
+          state.groupColors = saved.groupColors || {};
           state.theme = saved.theme || state.theme; state.layout = saved.layout || state.layout;
           state.version = saved.version || 0;
         }
