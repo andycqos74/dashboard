@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "_comment": "Shared link set for the QoS Staff Dashboard. Every visitor sees these tiles. To change what everyone sees: edit this file and bump \"version\" by 1 so browsers pick up the new set on next load. Each link: name (required), url (required), group (required), fav (optional true = shown in Pinned).",
+  "links": [
+    { "name": "Password Manager", "url": "https://vault.qosfc.com", "group": "Operations", "fav": true },
+    { "name": "Back Office Till Manager", "url": "https://backoffice.qosfc.com", "group": "Operations", "fav": true },
+    { "name": "Stock Manager", "url": "https://stock.qosfc.com", "group": "Operations", "fav": true },
+    { "name": "Invoicing", "url": "https://invoicing.qosfc.com", "group": "Operations", "fav": true },
+    { "name": "Rota & Shifts", "url": "https://rota.qosfc.com", "group": "Operations" },
+    { "name": "Ticketing Admin", "url": "https://tickets.qosfc.com", "group": "Matchday" },
+    { "name": "Hospitality Bookings", "url": "https://hospitality.qosfc.com", "group": "Matchday" },
+    { "name": "Stadium Access Control", "url": "https://access.qosfc.com", "group": "Matchday" },
+    { "name": "Matchday Programme CMS", "url": "https://programme.qosfc.com", "group": "Matchday" },
+    { "name": "Club Website CMS", "url": "https://qosfc.com/wp-admin", "group": "Comms & Media" },
+    { "name": "Club Shop Admin", "url": "https://shop.qosfc.com/admin", "group": "Comms & Media" },
+    { "name": "Mailing List", "url": "https://mail.qosfc.com", "group": "Comms & Media" },
+    { "name": "Social Scheduler", "url": "https://buffer.com", "group": "Comms & Media" },
+    { "name": "Staff Email", "url": "https://mail.google.com", "group": "Admin & Finance" },
+    { "name": "Shared Drive", "url": "https://drive.google.com", "group": "Admin & Finance" },
+    { "name": "Accounts", "url": "https://xero.com", "group": "Admin & Finance" },
+    { "name": "HMRC Gateway", "url": "https://www.gov.uk/log-in-hmrc-online-services", "group": "Admin & Finance" },
+    { "name": "Companies House", "url": "https://find-and-update.company-information.service.gov.uk", "group": "Admin & Finance" },
+    { "name": "SPFL Club Portal", "url": "https://spfl.co.uk", "group": "League & Football" },
+    { "name": "Scottish FA Portal", "url": "https://scottishfa.co.uk", "group": "League & Football" }
+  ]
+}
