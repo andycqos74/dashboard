@@ -54,6 +54,24 @@ services:
 With a baked image, update links by rebuilding + pushing a new image, then
 redeploy the stack.
 
+## Troubleshooting
+
+### Healthcheck: `wget: can't connect to remote host: Connection refused`
+
+The container is marked unhealthy even though the dashboard loads fine in a
+browser. This is a healthcheck bug, not a serving problem — confirm with
+`docker logs qos-dashboard`: if you see `start worker process`, nginx is up.
+
+Cause: the healthcheck probed `http://localhost/`, which can resolve to `::1`
+first. The nginx image's `10-listen-on-ipv6-by-default.sh` only adds
+`listen [::]:80` to the *packaged* config; because we ship our own
+`nginx.conf`, it logs `differs from the packaged version` and skips that step,
+so nginx binds IPv4 only and the IPv6 probe is refused.
+
+Fixed by probing `127.0.0.1` explicitly. If you deployed before this fix, pull
+the latest commit and redeploy. External access is unaffected either way —
+Docker's published port forwards to the container's IPv4 address.
+
 ## Option C — Edit links on the host without rebuilding
 
 If you'd rather change links directly on the Docker host, put `links.json` on the
