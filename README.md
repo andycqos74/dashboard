@@ -3,8 +3,9 @@
 An internal new-tab-style start page for Queen of the South FC staff — a dashboard
 of links to the tools staff use daily (password manager, back-office till manager,
 stock manager, invoicing, etc.). Search links or the web, pin favourites, see
-recently opened links, switch between **Grouped** and **Compact** layouts, and
-toggle **light/dark**.
+recently opened links, drag tiles to reorder, collapse groups, edit each tile's
+logo, colour and icon, switch between **Grouped** and **Compact** layouts, pick a
+**card size** (S/M/L), and toggle **light/dark**.
 
 Built as a static site (vanilla HTML/CSS/JS, no build step, no framework) that
 faithfully recreates the supplied design. Hosted on Docker via nginx. **No login** —
@@ -27,12 +28,40 @@ To change the links for **all** users:
 Each link entry:
 
 ```json
-{ "name": "Stock Manager", "url": "https://stock.qosfc.com", "group": "Operations", "fav": true }
+{ "name": "Stock Manager", "url": "https://stock.qosfc.com", "group": "Operations",
+  "fav": true, "logo": "assets/logos/stock.png", "icon": "onedrive", "color": "#E4002B" }
 ```
 
 - `name`, `url`, `group` — required. Links are shown under their `group` heading,
   in file order.
 - `fav` — optional; `true` puts the link in the **Pinned** row at the top.
+- `logo` — optional URL of a logo image for the tile's logo slot (a full-width
+  banner on grouped cards, a small square on pinned tiles and compact rows). Drop
+  files in `assets/` and reference them (`assets/logos/xero.png`), or use a remote
+  URL. If it's missing or fails to load, the tile falls back to `icon`, then to
+  the link's initials.
+- `icon` — optional. A **brand key** (`google`, `gmail`, `drive`, `docs`,
+  `microsoft`, `onedrive`, `outlook`, `amazon`, `xero`, `wix`, `dropbox`,
+  `postoffice`, `globe`), an **emoji** (e.g. `"🛒"`), or an **image URL**. Omit it
+  and the dashboard **auto-detects** an icon from the URL/name (Google, OneDrive,
+  Xero, …); if it can't, it falls back to the name's initials.
+- `color` — optional hex accent for the tile's badge/dot (e.g. `"#E4002B"`). Omit
+  for an automatic colour derived from the name.
+
+### Interacting with tiles (per-browser)
+
+- **Drag** a tile onto another to reorder; dropping it into a different group
+  recategorises it.
+- Click a group's **chevron / heading** to collapse or expand that category.
+- **✎ Edit** a tile to change its name, URL, group, **logo**, **icon** and
+  **colour**; **★** pins it.
+- **S / M / L** in the header switches card size (compact / comfortable / large) —
+  it scales the grid, logo height, radii and type together.
+- **Logos: contain / cover** in the footer controls how logo images fill their
+  slot: `contain` shows the whole logo letterboxed, `cover` fills and crops.
+
+These are all stored in that browser. To change things for **everyone**, edit
+`config/links.json` (and bump `version`).
 
 Bumping `version` is what makes returning browsers pick up the new set. Without a
 bump, a browser that has already cached its copy keeps showing the old links until

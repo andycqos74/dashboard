@@ -8,6 +8,7 @@
 <body>
 <x-dc>
 <helmet>
+<script src="./image-slot.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -69,13 +70,13 @@
           <h2 style="margin:0;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:14px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim)">Pinned</h2>
           <span style="font-size:13px;color:var(--text-dim)">Your most-used tools</span>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(206px,1fr));gap:14px">
+        <div style="{{ pinnedGridStyle }}">
           <sc-for list="{{ favourites }}" as="link" hint-placeholder-count="4">
-            <a href="{{ link.url }}" target="_blank" rel="noopener" onClick="{{ link.onOpen }}" draggable="true" onDragStart="{{ link.onDragStart }}" onDragOver="{{ link.onDragOver }}" onDrop="{{ link.onDrop }}" style="position:relative;display:flex;align-items:center;gap:13px;background:var(--tile);border:1px solid var(--line);border-radius:16px;padding:15px 15px;box-shadow:var(--shadow);color:var(--text);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease" style-hover="transform:translateY(-3px);box-shadow:var(--shadow-lift);border-color:var(--line-strong)">
-              <span style="{{ link.badgeStyle }}">{{ link.initials }}</span>
+            <a href="{{ link.url }}" target="_blank" rel="noopener" onClick="{{ link.onOpen }}" draggable="true" onDragStart="{{ link.onDragStart }}" onDragOver="{{ link.onDragOver }}" onDrop="{{ link.onDrop }}" style="{{ link.pinnedStyle }}" style-hover="transform:translateY(-3px);box-shadow:var(--shadow-lift);border-color:var(--line-strong)">
+              <span style="{{ link.logoWrapStyle }}"><image-slot id="pin-logo-{{ link.id }}" shape="rounded" radius="9" fit="{{ logoFit }}" placeholder="Logo"></image-slot></span>
               <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
-                <span style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ link.name }}</span>
-                <span style="font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ link.host }}</span>
+                <span style="{{ link.nameStyle }}">{{ link.name }}</span>
+                <span style="{{ link.hostStyle }}">{{ link.host }}</span>
               </span>
             </a>
           </sc-for>
@@ -103,14 +104,14 @@
               <span style="flex:1;height:1px;background:var(--line)"></span>
               <span style="font-size:12px;font-weight:600;color:var(--text-dim)">{{ group.count }}</span>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px">
+            <div style="{{ groupedGridStyle }}">
               <sc-for list="{{ group.links }}" as="link" hint-placeholder-count="4">
-                <div draggable="true" onDragStart="{{ link.onDragStart }}" onDragOver="{{ link.onDragOver }}" onDrop="{{ link.onDrop }}" style="position:relative;background:var(--tile);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease" style-hover="transform:translateY(-3px);box-shadow:var(--shadow-lift);border-color:var(--line-strong)">
-                  <a href="{{ link.url }}" target="_blank" rel="noopener" onClick="{{ link.onOpen }}" style="display:flex;flex-direction:column;gap:12px;padding:17px 17px 15px;color:var(--text)">
-                    <span style="{{ link.badgeStyle }}">{{ link.initials }}</span>
-                    <span style="display:flex;flex-direction:column;gap:3px;min-width:0">
-                      <span style="font-size:16px;font-weight:600;letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ link.name }}</span>
-                      <span style="font-size:12.5px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ link.host }}</span>
+                <div draggable="true" onDragStart="{{ link.onDragStart }}" onDragOver="{{ link.onDragOver }}" onDrop="{{ link.onDrop }}" style="{{ link.cardOuterStyle }}" style-hover="transform:translateY(-3px);box-shadow:var(--shadow-lift);border-color:var(--line-strong)">
+                  <a href="{{ link.url }}" target="_blank" rel="noopener" onClick="{{ link.onOpen }}" style="{{ link.cardAnchorStyle }}">
+                    <span style="{{ link.cardLogoWrapStyle }}"><image-slot id="card-logo-{{ link.id }}" shape="rect" fit="{{ logoFit }}" placeholder="Add a logo"></image-slot></span>
+                    <span style="{{ link.cardTextWrapStyle }}">
+                      <span style="{{ link.nameStyle }}">{{ link.name }}</span>
+                      <span style="{{ link.hostStyle }}">{{ link.host }}</span>
                     </span>
                   </a>
                   <div style="position:absolute;top:11px;right:11px;display:flex;gap:4px">
@@ -138,9 +139,9 @@
               <sc-for list="{{ group.links }}" as="link" hint-placeholder-count="4">
                 <div draggable="true" onDragStart="{{ link.onDragStart }}" onDragOver="{{ link.onDragOver }}" onDrop="{{ link.onDrop }}" style="display:flex;align-items:center;border-radius:12px" style-hover="background:var(--surface2)">
                   <a href="{{ link.url }}" target="_blank" rel="noopener" onClick="{{ link.onOpen }}" style="flex:1;display:flex;align-items:center;gap:12px;padding:10px 8px 10px 10px;min-width:0;color:var(--text)">
-                    <span style="{{ link.dotStyle }}"></span>
-                    <span style="font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ link.name }}</span>
-                    <span style="margin-left:auto;font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44%">{{ link.host }}</span>
+                    <span style="{{ link.rowLogoWrapStyle }}"><image-slot id="row-logo-{{ link.id }}" shape="rounded" radius="7" fit="{{ logoFit }}" placeholder="Logo"></image-slot></span>
+                    <span style="{{ link.nameStyle }}">{{ link.name }}</span>
+                    <span style="{{ link.hostInlineStyle }}">{{ link.host }}</span>
                   </a>
                   <div style="display:flex;gap:2px;padding-right:8px">
                     <button onClick="{{ link.onFav }}" title="Pin" style="{{ link.favStyle }}">★</button>
@@ -200,7 +201,7 @@
   </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light' | 'dark'&quot;},&quot;layout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;grouped&quot;,&quot;compact&quot;],&quot;default&quot;:&quot;grouped&quot;,&quot;tsType&quot;:&quot;'grouped' | 'compact'&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light' | 'dark'&quot;},&quot;layout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;grouped&quot;,&quot;compact&quot;],&quot;default&quot;:&quot;grouped&quot;,&quot;tsType&quot;:&quot;'grouped' | 'compact'&quot;},&quot;cardSize&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compact&quot;,&quot;comfortable&quot;,&quot;large&quot;],&quot;default&quot;:&quot;comfortable&quot;,&quot;tsType&quot;:&quot;'compact' | 'comfortable' | 'large'&quot;,&quot;section&quot;:&quot;Cards&quot;},&quot;logoFit&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;cover&quot;,&quot;contain&quot;],&quot;default&quot;:&quot;contain&quot;,&quot;tsType&quot;:&quot;'cover' | 'contain'&quot;,&quot;section&quot;:&quot;Logo&quot;}}">
 const KEY = 'qos-dash-v1';
 const DEFAULTS = [
   { name: 'Password Manager', url: 'https://vault.qosfc.com', group: 'Operations', fav: true },
@@ -225,6 +226,11 @@ const DEFAULTS = [
   { name: 'Scottish FA Portal', url: 'https://scottishfa.co.uk', group: 'League & Football' }
 ];
 const HUES = [258, 232, 212, 282, 196, 244];
+const SIZES = {
+  compact: { grid: 180, gap: 10, radius: 14, pad: '12px 12px 11px', innerGap: 8, pinPad: '11px 12px', pinGap: 10, badge: 32, badgeFont: 13, badgeRadius: 9, nameFont: 13.5, hostFont: 11.5, logoHeight: 88 },
+  comfortable: { grid: 230, gap: 14, radius: 18, pad: '17px 17px 15px', innerGap: 12, pinPad: '15px 15px', pinGap: 13, badge: 38, badgeFont: 16, badgeRadius: 11, nameFont: 16, hostFont: 12.5, logoHeight: 116 },
+  large: { grid: 300, gap: 18, radius: 20, pad: '24px 24px 20px', innerGap: 14, pinPad: '19px 20px', pinGap: 16, badge: 52, badgeFont: 20, badgeRadius: 14, nameFont: 19, hostFont: 14, logoHeight: 152 }
+};
 
 class Component extends DCLogic {
   constructor(props) {
@@ -276,14 +282,24 @@ class Component extends DCLogic {
     this.persist({ links });
   }
 
-  decorate(link) {
+  decorate(link, sz) {
     const hue = this.hueFor(link.name);
     return {
       ...link,
       host: this.host(link.url),
       initials: this.initials(link.name),
-      badgeStyle: `display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex:none;border-radius:11px;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:16px;font-weight:700;letter-spacing:.02em;color:oklch(0.42 0.14 ${hue});background:oklch(0.93 0.045 ${hue});border:1px solid oklch(0.87 0.06 ${hue})`,
+      badgeStyle: `display:flex;align-items:center;justify-content:center;width:${sz.badge}px;height:${sz.badge}px;flex:none;border-radius:${sz.badgeRadius}px;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:${sz.badgeFont}px;font-weight:700;letter-spacing:.02em;color:oklch(0.42 0.14 ${hue});background:oklch(0.93 0.045 ${hue});border:1px solid oklch(0.87 0.06 ${hue})`,
       dotStyle: `width:9px;height:9px;flex:none;border-radius:3px;background:oklch(0.58 0.15 ${hue})`,
+      nameStyle: `font-size:${sz.nameFont}px;font-weight:600;letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis`,
+      hostStyle: `font-size:${sz.hostFont}px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis`,
+      hostInlineStyle: `margin-left:auto;font-size:${sz.hostFont}px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44%`,
+      pinnedStyle: `position:relative;display:flex;align-items:center;gap:${sz.pinGap}px;background:var(--tile);border:1px solid var(--line);border-radius:${sz.radius}px;padding:${sz.pinPad};box-shadow:var(--shadow);color:var(--text);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease`,
+      cardOuterStyle: `position:relative;background:var(--tile);border:1px solid var(--line);border-radius:${sz.radius}px;box-shadow:var(--shadow);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease`,
+      cardAnchorStyle: `display:flex;flex-direction:column;gap:${sz.innerGap}px;padding:0 0 ${sz.pad.split(' ')[2] || '15px'};color:var(--text)`,
+      cardLogoWrapStyle: `display:block;width:100%;height:${sz.logoHeight}px;border-radius:${sz.radius}px ${sz.radius}px 0 0;overflow:hidden;background:var(--surface2);margin-bottom:${sz.innerGap}px`,
+      cardTextWrapStyle: `display:flex;flex-direction:column;gap:3px;min-width:0;padding:0 ${sz.pad.split(' ')[1] || sz.pad.split(' ')[0]}`,
+      logoWrapStyle: `display:block;width:${sz.badge}px;height:${sz.badge}px;flex:none;border-radius:9px;overflow:hidden;background:var(--surface2)`,
+      rowLogoWrapStyle: `display:block;width:${Math.max(sz.badge - 8, 20)}px;height:${Math.max(sz.badge - 8, 20)}px;flex:none;border-radius:7px;overflow:hidden;background:var(--surface2)`,
       favStyle: `width:26px;height:26px;border-radius:8px;border:0;background:transparent;font-size:13px;cursor:pointer;color:${link.fav ? 'var(--navy)' : 'var(--text-dim)'};opacity:${link.fav ? 1 : 0.5}`,
       onOpen: () => this.open(link),
       onFav: (e) => { e.preventDefault(); e.stopPropagation(); this.persist({ links: this.state.links.map(l => l.id === link.id ? { ...l, fav: !l.fav } : l) }); },
@@ -298,8 +314,11 @@ class Component extends DCLogic {
     const s = this.state;
     const all = s.links || [];
     const q = s.query.trim().toLowerCase();
+    const cardSize = this.props.cardSize || 'comfortable';
+    const sz = SIZES[cardSize] || SIZES.comfortable;
+    const logoFit = this.props.logoFit || 'cover';
     const match = l => !q || l.name.toLowerCase().includes(q) || l.url.toLowerCase().includes(q) || (l.group || '').toLowerCase().includes(q);
-    const visible = all.filter(match).map(l => this.decorate(l));
+    const visible = all.filter(match).map(l => this.decorate(l, sz));
 
     const groupNames = [];
     visible.forEach(l => { if (!groupNames.includes(l.group)) groupNames.push(l.group); });
@@ -313,6 +332,9 @@ class Component extends DCLogic {
     const tab = on => `border:0;background:${on ? 'var(--navy)' : 'transparent'};color:${on ? '#fff' : 'var(--text-dim)'};font-size:13px;font-weight:600;padding:7px 15px;border-radius:999px;cursor:pointer`;
 
     return {
+      logoFit,
+      groupedGridStyle: `display:grid;grid-template-columns:repeat(auto-fill,minmax(${sz.grid}px,1fr));gap:${sz.gap}px`,
+      pinnedGridStyle: `display:grid;grid-template-columns:repeat(auto-fill,minmax(${Math.max(sz.grid - 24, 150)}px,1fr));gap:${sz.gap}px`,
       theme: s.theme, themeIcon: s.theme === 'dark' ? '☀' : '☾',
       greeting, query: s.query,
       searchHint: q ? (visible.length + ' match' + (visible.length === 1 ? '' : 'es')) : 'Web search ↵',
@@ -322,7 +344,7 @@ class Component extends DCLogic {
       isEmpty: all.length > 0 && visible.length === 0,
       favourites: visible.filter(l => l.fav),
       showFavourites: !q && visible.some(l => l.fav),
-      recents: s.recents.map(id => all.find(l => l.id === id)).filter(Boolean).map(l => this.decorate(l)),
+      recents: s.recents.map(id => all.find(l => l.id === id)).filter(Boolean).map(l => this.decorate(l, sz)),
       showRecents: !q && s.recents.length > 0,
       tabGroupedStyle: tab(s.layout === 'grouped'),
       tabCompactStyle: tab(s.layout === 'compact'),

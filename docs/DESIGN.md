@@ -1,7 +1,7 @@
 # Handoff: QoS Staff Dashboard (new-tab style link start page)
 
 ## Overview
-An internal start page for Queen of the South FC staff: a browser-new-tab-style dashboard of links to the tools staff use daily (password manager, back office till manager, stock manager, invoicing, etc.). Users can search their links or the web, pin favourites, see recently opened links, add/edit/delete links, drag to reorder, switch between two layouts, and toggle light/dark. All state persists locally per browser.
+An internal start page for Queen of the South FC staff: a browser-new-tab-style dashboard of links to the tools staff use daily (password manager, back office till manager, stock manager, invoicing, etc.). Users can search their links or the web, pin favourites, see recently opened links, add/edit/delete links, drag to reorder, switch between two layouts and two card sizes, and toggle light/dark. Each link tile has its own logo image slot (fill/contain). All state persists locally per browser.
 
 ## About the Design Files
 The files in this bundle are **design references created in HTML** — a working prototype of the intended look and behaviour, not production code to copy verbatim. The task is to **recreate this design in the target codebase's existing environment** (React, Vue, Svelte, native, etc.) using its established patterns, component library and state conventions. If no app environment exists yet, pick the most appropriate framework and implement it there. The bundled `.dc.html` file uses a proprietary streaming-template runtime; read it for structure and exact values, don't port the runtime.
@@ -29,6 +29,12 @@ The files in this bundle are **design references created in HTML** — a working
   - Theme toggle: `40×40` circle, `1px solid var(--line)`, `background:var(--surface)`; glyph `☾` in light mode, `☀` in dark. Hover: `border-color:var(--line-strong)`.
   - Primary button "＋ Add link": height `40px`, `padding:0 18px`, `border-radius:999px`, `background:var(--navy)`, `#fff`, `14px/600`. Hover `background:var(--navy-soft)`.
 
+**Card size** (config-driven, see Design Tokens → Card size presets): `compact` / `comfortable` (default) / `large` scale the grid column minimum, gaps, radii, per-card logo height, badge/dot sizes and name/host font sizes uniformly across pinned tiles, grouped cards and compact rows.
+
+**Per-link logo** — every tile carries its own logo image (a drag-and-drop image placeholder in the prototype; wire it to an uploaded/fetched logo or favicon in the real build). A global `logoFit` setting (`cover` fills the frame and crops; `contain`, the default, keeps the whole logo visible and letterboxes) applies to all logos at once.
+- Grouped cards: logo fills the full card width at the top (rounded top corners only, height per size preset — 88/116/152px), name + host sit below with horizontal padding matching the size preset.
+- Pinned tiles / compact rows: logo is a small rounded square to the left of the name (badge-sized / badge-size-minus-8px respectively).
+
 **Search bar**
 - Row, height `60px`, `background:var(--surface)`, `1px solid var(--line)`, `border-radius:16px`, `padding:0 18px`, `gap:14px`, `--shadow`.
 - Leading glyph `⌕` at `19px`, `var(--text-dim)`.
@@ -38,8 +44,8 @@ The files in this bundle are **design references created in HTML** — a working
 **Pinned section** (hidden when query non-empty or no pinned links)
 - Header row: label "PINNED" (Barlow Condensed 700, `14px`, `.16em`, uppercase, `var(--text-dim)`) + sub-note "Your most-used tools" (`13px`, `var(--text-dim)`).
 - Grid `repeat(auto-fill, minmax(206px, 1fr))`, `gap:14px`.
-- Tile = anchor, row, `gap:13px`, `background:var(--tile)`, `1px solid var(--line)`, `border-radius:16px`, `padding:15px`, `--shadow`. Hover: `translateY(-3px)`, `--shadow-lift`, `border-color:var(--line-strong)`; transition `.16s ease` on transform/box-shadow/border-color.
-- Monogram badge (see Components) + name (`15px/600`, ellipsis) + host (`12px`, `var(--text-dim)`, ellipsis).
+- Tile = anchor, row, `gap` per size preset, `background:var(--tile)`, `1px solid var(--line)`, `border-radius` per preset, `padding` per preset, `--shadow`. Hover: `translateY(-3px)`, `--shadow-lift`, `border-color:var(--line-strong)`; transition `.16s ease` on transform/box-shadow/border-color.
+- Logo slot (rounded square, badge-sized) + name/host (sizes per preset, ellipsis).
 
 **Recent row** (hidden when query non-empty or no recents; max 6, most recent first)
 - Wrapping flex, `gap:9px`. Label "RECENT" same treatment as section labels.
@@ -48,8 +54,8 @@ The files in this bundle are **design references created in HTML** — a working
 **Grouped layout (default)**
 - Column of sections, `gap:30px`.
 - Section head: group name (Barlow Condensed 700, `14px`, `.16em`, uppercase, `var(--navy)`) + `1px` `var(--line)` rule filling remaining width + count (`12px/600`, `var(--text-dim)`).
-- Grid `repeat(auto-fill, minmax(230px, 1fr))`, `gap:14px`.
-- Card: `background:var(--tile)`, `1px solid var(--line)`, `border-radius:18px`, `--shadow`, same hover lift. Inner anchor: column, `gap:12px`, `padding:17px 17px 15px` — monogram badge, then name (`16px/600`, `letter-spacing:-.005em`) and host (`12.5px`, `var(--text-dim)`), both ellipsised.
+- Grid `repeat(auto-fill, minmax({sizeGrid}px, 1fr))`, `gap:{sizeGap}px` — see size presets.
+- Card: `background:var(--tile)`, `1px solid var(--line)`, `border-radius` per preset, `--shadow`, same hover lift. Full-width logo slot at the top (rounded top corners only, height per preset), then name (`letter-spacing:-.005em`) and host, both ellipsised, sized per preset with matching horizontal text padding.
 - Card actions, absolutely positioned `top:11px; right:11px`, `gap:4px`: pin `★` and edit `✎`, each `26×26`, `border-radius:8px`, transparent, `12–13px`. Pin: `var(--navy)` at opacity 1 when pinned, else `var(--text-dim)` at `.5`. Edit hover: opacity 1, `background:var(--surface2)`.
 
 **Compact layout**
@@ -85,7 +91,7 @@ The files in this bundle are **design references created in HTML** — a working
 Single client-side store, persisted to `localStorage` under key `qos-dash-v1` as `{ links, recents, theme, layout }`.
 - `links: { id, name, url, group, fav? }[]` — order is the user's drag order; grouping is derived by first-appearance of `group`.
 - `recents: string[]` — link ids, most recent first, max 6.
-- `theme: 'light' | 'dark'`, `layout: 'grouped' | 'compact'`.
+- `theme: 'light' | 'dark'`, `layout: 'grouped' | 'compact'`, `cardSize: 'compact' | 'comfortable' | 'large'`, `logoFit: 'cover' | 'contain'` (the latter two are global display settings, not per-link data).
 - Ephemeral (not persisted): `query`, `modalOpen`, `editId`, `draft {name,url,group}`, current drag id.
 - On mount: read storage; if absent, seed with the default link set below. Every mutation writes the whole store back.
 - No network/data fetching. Derived per render: `host` (hostname minus `www.`), `initials` (first letters of the first two words, uppercased), accent hue (see below).
@@ -113,7 +119,14 @@ Single client-side store, persisted to `localStorage` under key `qos-dash-v1` as
 - badge: `38×38`, `border-radius:11px`, text `oklch(0.42 0.14 H)`, background `oklch(0.93 0.045 H)`, border `1px solid oklch(0.87 0.06 H)`, Barlow Condensed 700 `16px`
 - dot: `9×9`, `border-radius:3px`, `oklch(0.58 0.15 H)`
 
-**Radii** `8` (icon buttons) · `11` (badge, inputs, modal buttons) · `12` (compact row) · `16` (search, pinned tile) · `18` (card, panel) · `20` (modal, empty state) · `999` (pills)
+**Card size presets** (`cardSize`: compact / comfortable [default] / large)
+| | grid min | gap | radius | card pad | badge | name | host | logo height |
+|---|---|---|---|---|---|---|---|---|
+| compact | 180px | 10px | 14px | 12/12/11px | 32px | 13.5px | 11.5px | 88px |
+| comfortable | 230px | 14px | 18px | 17/17/15px | 38px | 16px | 12.5px | 116px |
+| large | 300px | 18px | 20px | 24/24/20px | 52px | 19px | 14px | 152px |
+
+**Radii** `8` (icon buttons) · `9–14` (badge/logo slot, inputs, modal buttons, scales with card size) · `12` (compact row) · `14–20` (card, panel, scales with card size) · `16` (search, pinned tile) · `20` (modal, empty state) · `999` (pills)
 
 **Spacing scale** `2, 4, 6, 9, 10, 12, 14, 18, 22, 28, 30, 34` px
 
@@ -129,7 +142,8 @@ League & Football: SPFL Club Portal · Scottish FA Portal
 ⚠️ Only the four Operations tools the client named are real requirements; the remaining URLs are plausible placeholders on `*.qosfc.com` and must be replaced with the club's actual endpoints before shipping.
 
 ## Assets
-- `assets/qos-crest.png` — Queen of the South FC crest, supplied by the client (240×240 PNG). Only club-owned asset used; no other imagery or icons.
+- `assets/qos-crest.png` — Queen of the South FC crest, supplied by the client (240×240 PNG), used only in the header.
+- Per-link logos are empty placeholders in the prototype (a drag-and-drop image slot component) — no real logo assets are bundled. Source real tool logos/favicons before shipping, and decide a fallback (e.g. the monogram badge used earlier in this file's revision history) for links with none.
 - Icons are text glyphs (`⌕ ★ ✎ ✕ ☾ ☀ ＋ ↵`). Swap for the codebase's icon set (search, star, pencil, close, moon, sun, plus) when implementing.
 - Fonts: Barlow and Barlow Condensed from Google Fonts (weights 400–700).
 

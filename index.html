@@ -41,7 +41,28 @@
   .modal-close:hover{color:var(--text)!important}
   .reset-btn:hover{color:var(--navy)!important}
   .delete-btn:hover{border-color:#C2415A!important}
-  .link-btn{-webkit-tap-highlight-color:transparent}
+  .link-btn{-webkit-tap-highlight-color:transparent;cursor:pointer}
+
+  /* Drag & drop feedback */
+  [data-id]{cursor:grab}
+  [data-id]:active{cursor:grabbing}
+  .dragging{opacity:.4}
+  .drop-target{outline:2px dashed var(--gc,var(--navy));outline-offset:2px;border-radius:12px}
+  .chev:hover{opacity:.7}
+
+  /* Logo slots: image fills the frame per logoFit; fallback centres a brand
+     mark or the monogram (the design's sanctioned no-logo fallback). */
+  .logo-img{width:100%;height:100%;display:block}
+  .logo-fb{width:100%;height:100%;display:flex;align-items:center;justify-content:center;
+           font-family:'Barlow Condensed',Barlow,sans-serif;font-weight:700;letter-spacing:.02em}
+  .logo-fb.big > .logo-fb svg{width:60%;height:60%}
+  .logo-fb svg{display:block}
+
+  /* Native colour-input chrome reset */
+  input[type=color]{-webkit-appearance:none;appearance:none}
+  input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+  input[type=color]::-webkit-color-swatch{border:none;border-radius:4px}
+  input[type=color]::-moz-color-swatch{border:none;border-radius:4px}
 </style>
 </head>
 <body>
@@ -53,19 +74,33 @@
 
   var KEY = 'qos-dash-v1';
   var HUES = [258, 232, 212, 282, 196, 244];
+  var DEFAULT_GC = '#3A55C6';
+
+  // Card size presets — scale grid, gaps, radii, logo height, badge and type.
+  var SIZES = {
+    compact:     { grid:180, gap:10, radius:14, pad:'12px 12px 11px', innerGap:8,  pinPad:'11px 12px', pinGap:10, badge:32, badgeFont:13, badgeRadius:9,  nameFont:13.5, hostFont:11.5, logoHeight:88 },
+    comfortable: { grid:230, gap:14, radius:18, pad:'17px 17px 15px', innerGap:12, pinPad:'15px 15px', pinGap:13, badge:38, badgeFont:16, badgeRadius:11, nameFont:16,   hostFont:12.5, logoHeight:116 },
+    large:       { grid:300, gap:18, radius:20, pad:'24px 24px 20px', innerGap:14, pinPad:'19px 20px', pinGap:16, badge:52, badgeFont:20, badgeRadius:14, nameFont:19,   hostFont:14,   logoHeight:152 }
+  };
 
   // ---- state ----
   var state = {
-    links: [],           // [{id,name,url,group,fav}]
+    links: [],           // [{id,name,url,group,fav,logo?,icon?,color?}]
     recents: [],         // link ids, most-recent first, max 6
+    groupColors: {},     // { groupName: '#rrggbb' }
+    collapsed: {},       // { groupName: true }
     theme: 'light',
-    layout: 'grouped',
+    layout: 'grouped',   // grouped | compact
+    cardSize: 'comfortable',
+    logoFit: 'contain',  // contain | cover
     query: '',
     modalOpen: false,
     editId: null,
-    version: 0           // config version this browser was seeded from
+    version: 0
   };
   var drag = null;
+
+  function sz() { return SIZES[state.cardSize] || SIZES.comfortable; }
 
   // ---- helpers ----
   function esc(s) {
@@ -86,50 +121,147 @@
     for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 997;
     return HUES[h % HUES.length];
   }
-  function badgeStyle(hue) {
-    return "display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex:none;border-radius:11px;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:16px;font-weight:700;letter-spacing:.02em;color:oklch(0.42 0.14 " + hue + ");background:oklch(0.93 0.045 " + hue + ");border:1px solid oklch(0.87 0.06 " + hue + ")";
-  }
-  function dotStyle(hue) {
-    return "width:9px;height:9px;flex:none;border-radius:3px;background:oklch(0.58 0.15 " + hue + ")";
+  function gcFor(name) { return state.groupColors[name] || DEFAULT_GC; }
+  function hexToRgba(hex, a) {
+    var h = String(hex).replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var n = parseInt(h, 16);
+    if (isNaN(n)) return 'rgba(90,100,140,' + a + ')';
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
   }
   function favStyle(fav) {
     return "width:26px;height:26px;border-radius:8px;border:0;background:transparent;font-size:13px;cursor:pointer;color:" + (fav ? 'var(--navy)' : 'var(--text-dim)') + ";opacity:" + (fav ? 1 : 0.5);
+  }
+
+  // ---- brand icons (inline SVG, self-contained/offline) ----
+  var BRANDS = {
+    google: '<svg viewBox="0 0 48 48" width="22" height="22"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.5 0 10.5-2.1 14.3-5.6l-6.6-5.6C29.7 34.5 27 35.5 24 35.5c-5.3 0-9.7-3.4-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.4l6.6 5.6C41.9 35.7 44 30.3 44 24c0-1.3-.1-2.3-.4-3.5z"/></svg>',
+    gmail: '<svg viewBox="0 0 24 24" width="22" height="22"><path fill="#EA4335" d="M2 5.6C2 4.7 2.7 4 3.6 4L12 10.4 20.4 4c.9 0 1.6.7 1.6 1.6v12.8c0 .9-.7 1.6-1.6 1.6H19V9.2l-7 5.2-7-5.2V20H3.6C2.7 20 2 19.3 2 18.4V5.6z"/></svg>',
+    drive: '<svg viewBox="0 0 87.3 78" width="22" height="22"><path fill="#0066da" d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"/><path fill="#00ac47" d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z"/><path fill="#ea4335" d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z"/><path fill="#00832d" d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"/><path fill="#2684fc" d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"/><path fill="#ffba00" d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z"/></svg>',
+    docs: '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="4" y="2" width="16" height="20" rx="2" fill="#7248B9"/><rect x="7" y="7" width="10" height="1.6" fill="#fff"/><rect x="7" y="11" width="10" height="1.6" fill="#fff"/><rect x="7" y="15" width="6" height="1.6" fill="#fff"/></svg>',
+    microsoft: '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="2" y="2" width="9" height="9" fill="#F25022"/><rect x="13" y="2" width="9" height="9" fill="#7FBA00"/><rect x="2" y="13" width="9" height="9" fill="#00A4EF"/><rect x="13" y="13" width="9" height="9" fill="#FFB900"/></svg>',
+    onedrive: '<svg viewBox="0 0 24 24" width="22" height="22"><path fill="#0364B8" d="M13.2 7.2a5 5 0 0 0-4.7 3.1A4 4 0 0 0 5 17.5h12.7a3.4 3.4 0 0 0 .2-6.8 5 5 0 0 0-4.7-3.5z"/></svg>',
+    outlook: '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="9" y="5" width="13" height="14" rx="1.2" fill="#0A2767"/><rect x="9" y="5" width="13" height="7" fill="#0364B8"/><rect x="1" y="4" width="12" height="16" rx="2" fill="#0F6CBD"/><ellipse cx="7" cy="12" rx="3.1" ry="3.5" fill="none" stroke="#fff" stroke-width="1.6"/></svg>',
+    amazon: '<svg viewBox="0 0 24 24" width="22" height="22"><path fill="#FF9900" d="M4 16c4.5 3 11.5 3 16 .2.4-.2.7.2.4.5C17.8 20 13 21 9 19.4 6.7 18.5 5 17.2 4 16z"/><path fill="#221F1F" d="M13 5c-2.5 0-4 1.3-4.3 3l2 .2c.1-1 .8-1.5 2-1.5 1.3 0 1.8.7 1.8 2v.4c-3.7 0-5.8 1.1-5.8 3.6 0 1.6 1.2 2.6 3 2.6 1.4 0 2.3-.5 3-1.4.2.7.9 1.2 1.7 1.3l1-1.4c-.6-.3-.8-.7-.8-1.6V8.6C16.6 6.2 15.4 5 13 5zm1.5 6.6c0 1.3-.8 2.1-2 2.1-.8 0-1.3-.5-1.3-1.2 0-1.2 1.1-1.7 3.3-1.7z"/></svg>',
+    xero: '<svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="10" fill="#13B5EA"/><path d="M9 9l6 6M15 9l-6 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    wix: '<svg viewBox="0 0 24 24" width="22" height="22"><text x="12" y="16" font-family="Arial,sans-serif" font-weight="700" font-size="8.5" fill="#0C6EFC" text-anchor="middle">WIX</text></svg>',
+    dropbox: '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="#0061FF" d="M7 3 2 6.3l5 3.2 5-3.2zM17 3l-5 3.3 5 3.2 5-3.2zM2 12.7l5 3.2 5-3.2-5-3.2zM17 9.5l-5 3.2 5 3.2 5-3.2zM7 17.5l5 3.2 5-3.2-5-3.1z"/></svg>',
+    postoffice: '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="3" y="3" width="18" height="18" rx="3" fill="#E4002B"/><text x="12" y="16" font-family="Arial,sans-serif" font-weight="700" font-size="10" fill="#fff" text-anchor="middle">PO</text></svg>',
+    globe: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#5C6588" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>'
+  };
+  var BRAND_ALIAS = { forms:'docs', sheets:'docs', office:'microsoft', office365:'microsoft', sharepoint:'onedrive', teams:'microsoft', hotmail:'outlook' };
+  function brandKey(k) { k = String(k || '').toLowerCase().trim(); return BRAND_ALIAS[k] || (BRANDS[k] ? k : ''); }
+
+  function detectBrand(url, name) {
+    var s = host(url).toLowerCase() + ' ' + (name || '').toLowerCase();
+    if (/mail\.google|gmail/.test(s)) return 'gmail';
+    if (/drive\.google/.test(s)) return 'drive';
+    if (/docs\.google|forms\.google|\bforms\b|google\s*forms|sheets/.test(s)) return 'docs';
+    if (/google/.test(s)) return 'google';
+    if (/postoffice|post ?office|drop.?and.?go/.test(s)) return 'postoffice';
+    if (/onedrive|1drv|live\.com|sharepoint/.test(s)) return 'onedrive';
+    if (/outlook|hotmail/.test(s)) return 'outlook';
+    if (/microsoft|office\.com|office365|\bms ?office\b|\bteams\b/.test(s)) return 'microsoft';
+    if (/amazon/.test(s)) return 'amazon';
+    if (/xero/.test(s)) return 'xero';
+    if (/wix/.test(s)) return 'wix';
+    if (/dropbox/.test(s)) return 'dropbox';
+    return '';
+  }
+
+  // Accent colours: explicit hex, else the name-hashed hue.
+  function accent(l) {
+    if (l.color) return { text:l.color, bg:hexToRgba(l.color, .14), border:hexToRgba(l.color, .34), dot:l.color };
+    var hue = hueFor(l.name);
+    return {
+      text: 'oklch(0.42 0.14 ' + hue + ')',
+      bg:   'oklch(0.93 0.045 ' + hue + ')',
+      border:'oklch(0.87 0.06 ' + hue + ')',
+      dot:  'oklch(0.58 0.15 ' + hue + ')'
+    };
+  }
+
+  // Contents of a logo slot: real logo image → brand mark → monogram.
+  function logoContent(l, big) {
+    var ac = accent(l);
+    if (l.logo) {
+      return '<img class="logo-img" src="' + esc(l.logo) + '" alt="" loading="lazy" ' +
+        'style="object-fit:' + state.logoFit + '" ' +
+        'onerror="this.parentNode.innerHTML=this.parentNode.getAttribute(\'data-fb\')">';
+    }
+    return fallbackMark(l, big, ac);
+  }
+  // No logo image: show the brand mark / monogram. On the small square slots the
+  // badge fills the slot; on the wide card banner it sits centred on the neutral
+  // slot background, keeping the design's --surface2 logo area.
+  function fallbackMark(l, big, ac) {
+    var raw = (l.icon || '').trim();
+    var key = brandKey(raw || detectBrand(l.url, l.name));
+    var s = sz();
+    var inner;
+    if (key && BRANDS[key]) inner = BRANDS[key];
+    else if (/^https?:\/\//i.test(raw)) inner = '<img class="logo-img" src="' + esc(raw) + '" alt="" style="object-fit:' + state.logoFit + '">';
+    else if (raw) inner = '<span style="font-size:' + (big ? 26 : 20) + 'px;line-height:1">' + esc(raw) + '</span>';
+    else inner = esc(initials(l.name));
+
+    if (!big) {
+      return '<span class="logo-fb" style="background:' + ac.bg + ';color:' + ac.text + ';font-size:' + s.badgeFont + 'px">' + inner + '</span>';
+    }
+    var badge = Math.round(s.badge * 1.35);
+    return '<span class="logo-fb big">' +
+      '<span class="logo-fb" style="width:' + badge + 'px;height:' + badge + 'px;flex:none;border-radius:' + s.badgeRadius + 'px;' +
+        'background:' + ac.bg + ';color:' + ac.text + ';border:1px solid ' + ac.border + ';font-size:' + Math.round(s.badgeFont * 1.25) + 'px">' +
+        inner + '</span></span>';
+  }
+  // Fallback markup stashed on the slot so a broken image can swap to it.
+  function slot(l, wrapStyle, big) {
+    var ac = accent(l);
+    return '<span style="' + wrapStyle + '" data-fb="' + esc(fallbackMark(l, big, ac)) + '">' + logoContent(l, big) + '</span>';
   }
 
   // ---- persistence ----
   function persist() {
     try {
       localStorage.setItem(KEY, JSON.stringify({
-        version: state.version,
-        links: state.links,
-        recents: state.recents,
-        theme: state.theme,
-        layout: state.layout
+        version: state.version, links: state.links, recents: state.recents,
+        groupColors: state.groupColors, collapsed: state.collapsed,
+        theme: state.theme, layout: state.layout,
+        cardSize: state.cardSize, logoFit: state.logoFit
       }));
     } catch (e) {}
   }
 
-  // ---- seeding from shared config ----
+  function mapConfigLinks(cfgLinks) {
+    return cfgLinks.map(function (l, i) {
+      var o = { id:'l' + i, name:l.name, url:l.url, group:l.group || 'Other', fav:!!l.fav };
+      if (l.logo) o.logo = l.logo;
+      if (l.icon) o.icon = l.icon;
+      if (l.color) o.color = l.color;
+      return o;
+    });
+  }
+
   function seedFrom(config, saved) {
     var cfgVersion = (config && config.version) || 1;
     var cfgLinks = (config && Array.isArray(config.links)) ? config.links : [];
-    var seeded = cfgLinks.map(function (l, i) {
-      return { id: 'l' + i, name: l.name, url: l.url, group: l.group || 'Other', fav: !!l.fav };
-    });
+    var cfgColors = (config && config.groupColors) || {};
 
-    // Preserve personal UI prefs from any saved state.
     if (saved) {
       state.theme = saved.theme || state.theme;
       state.layout = saved.layout || state.layout;
+      state.cardSize = saved.cardSize || state.cardSize;
+      state.logoFit = saved.logoFit || state.logoFit;
+      state.collapsed = saved.collapsed || {};
     }
 
-    // Re-seed links whenever the shared config version changes (or first visit).
     if (saved && Array.isArray(saved.links) && saved.version === cfgVersion) {
       state.links = saved.links;
       state.recents = Array.isArray(saved.recents) ? saved.recents : [];
+      state.groupColors = saved.groupColors || cfgColors;
     } else {
-      state.links = seeded;
+      state.links = mapConfigLinks(cfgLinks);
       state.recents = [];
+      state.groupColors = cfgColors;
     }
     state.version = cfgVersion;
     persist();
@@ -142,8 +274,7 @@
   }
   function recordOpen(id) {
     state.recents = [id].concat(state.recents.filter(function (r) { return r !== id; })).slice(0, 6);
-    persist();
-    renderContent();
+    persist(); renderContent();
   }
   function toggleFav(id) {
     var l = findLink(id);
@@ -160,17 +291,28 @@
     var item = state.links.splice(from, 1)[0];
     item.group = state.links[to > from ? to - 1 : to].group;
     state.links.splice(to, 0, item);
-    persist();
-    renderContent();
+    persist(); renderContent();
   }
 
   // ---- derived view ----
   function decorate(l) {
-    var hue = hueFor(l.name);
+    var s = sz(), ac = accent(l);
+    var padParts = s.pad.split(' ');
     return {
-      id: l.id, name: l.name, url: l.url, group: l.group, fav: l.fav,
-      host: host(l.url), initials: initials(l.name),
-      badge: badgeStyle(hue), dot: dotStyle(hue), favS: favStyle(l.fav)
+      id:l.id, name:l.name, url:l.url, group:l.group, fav:l.fav, raw:l,
+      host: host(l.url),
+      nameStyle: 'font-size:' + s.nameFont + 'px;font-weight:600;letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis',
+      hostStyle: 'font-size:' + s.hostFont + 'px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis',
+      hostInlineStyle: 'margin-left:auto;font-size:' + s.hostFont + 'px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44%',
+      pinnedStyle: 'position:relative;display:flex;align-items:center;gap:' + s.pinGap + 'px;background:var(--tile);border:1px solid var(--line);border-radius:' + s.radius + 'px;padding:' + s.pinPad + ';box-shadow:var(--shadow);color:var(--text);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease',
+      cardOuterStyle: 'position:relative;background:var(--tile);border:1px solid var(--line);border-radius:' + s.radius + 'px;box-shadow:var(--shadow);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease',
+      cardAnchorStyle: 'display:flex;flex-direction:column;gap:' + s.innerGap + 'px;padding:0 0 ' + (padParts[2] || '15px') + ';color:var(--text)',
+      cardLogoWrapStyle: 'display:block;width:100%;height:' + s.logoHeight + 'px;border-radius:' + s.radius + 'px ' + s.radius + 'px 0 0;overflow:hidden;background:var(--surface2);margin-bottom:' + s.innerGap + 'px',
+      cardTextWrapStyle: 'display:flex;flex-direction:column;gap:3px;min-width:0;padding:0 ' + (padParts[1] || padParts[0]),
+      logoWrapStyle: 'display:block;width:' + s.badge + 'px;height:' + s.badge + 'px;flex:none;border-radius:9px;overflow:hidden;background:var(--surface2)',
+      rowLogoWrapStyle: 'display:block;width:' + Math.max(s.badge - 8, 20) + 'px;height:' + Math.max(s.badge - 8, 20) + 'px;flex:none;border-radius:7px;overflow:hidden;background:var(--surface2)',
+      dotStyle: 'width:9px;height:9px;flex:none;border-radius:3px;background:' + ac.dot,
+      favS: favStyle(l.fav)
     };
   }
   function view() {
@@ -181,46 +323,53 @@
         (l.group || '').toLowerCase().indexOf(q) >= 0;
     };
     var visible = state.links.filter(match).map(decorate);
-
     var groupNames = [];
     visible.forEach(function (l) { if (groupNames.indexOf(l.group) < 0) groupNames.push(l.group); });
     var groups = groupNames.map(function (name) {
       var links = visible.filter(function (l) { return l.group === name; });
       return { name: name, links: links, count: links.length };
     });
-
     return {
-      q: q, visible: visible, groups: groups, groupNames: groupNames,
+      q:q, visible:visible, groups:groups, groupNames:groupNames,
       favourites: visible.filter(function (l) { return l.fav; }),
-      recents: state.recents.map(function (id) { return findLink(id); })
-        .filter(Boolean).map(decorate)
+      recents: state.recents.map(function (id) { return findLink(id); }).filter(Boolean).map(decorate)
     };
   }
 
   // ================= RENDER =================
 
+  function tabStyle(on) {
+    return 'border:0;background:' + (on ? 'var(--navy)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--text-dim)') + ';font-size:13px;font-weight:600;padding:7px 15px;border-radius:999px;cursor:pointer';
+  }
+  function sizeTabStyle(on) {
+    return 'border:0;background:' + (on ? 'var(--navy)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--text-dim)') + ';font-size:13px;font-weight:600;padding:7px 12px;border-radius:999px;cursor:pointer';
+  }
+
   function shell() {
     var hour = new Date().getHours();
     var greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-    var themeIcon = state.theme === 'dark' ? '☀' : '☾';
 
-    var root = document.getElementById('root');
-    root.innerHTML =
+    document.getElementById('root').innerHTML =
       '<div id="wrap" data-theme="' + esc(state.theme) + '" style="min-height:100vh;background:radial-gradient(1200px 600px at 50% -280px, var(--bg2), var(--bg) 70%);padding:34px 32px 72px;color:var(--text)">' +
         '<div style="max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:28px">' +
 
-          '<header style="display:flex;align-items:center;gap:18px">' +
+          '<header style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">' +
             '<img src="assets/qos-crest.png" alt="Queen of the South FC crest" style="width:56px;height:56px;border-radius:50%;background:#fff;box-shadow:var(--shadow);flex:none">' +
             '<div style="display:flex;flex-direction:column;gap:2px;margin-right:auto">' +
               '<div style="font-family:\'Barlow Condensed\',Barlow,sans-serif;font-weight:700;font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--navy)">Queen of the South FC</div>' +
               '<div style="font-size:26px;font-weight:700;letter-spacing:-.01em;line-height:1.1">' + greeting + ', Doonhamers</div>' +
             '</div>' +
-            '<div style="display:flex;align-items:center;gap:10px">' +
+            '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
               '<div style="display:flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;box-shadow:var(--shadow)">' +
                 '<button class="tab" data-act="grouped" style="' + tabStyle(state.layout === 'grouped') + '">Grouped</button>' +
                 '<button class="tab" data-act="compact" style="' + tabStyle(state.layout === 'compact') + '">Compact</button>' +
               '</div>' +
-              '<button class="theme-btn" data-act="theme" title="Toggle light / dark" style="width:40px;height:40px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:16px;cursor:pointer;box-shadow:var(--shadow)">' + themeIcon + '</button>' +
+              '<div style="display:flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;box-shadow:var(--shadow)" title="Card size">' +
+                '<button class="sizetab" data-act="size" data-size="compact" title="Compact cards" style="' + sizeTabStyle(state.cardSize === 'compact') + '">S</button>' +
+                '<button class="sizetab" data-act="size" data-size="comfortable" title="Comfortable cards" style="' + sizeTabStyle(state.cardSize === 'comfortable') + '">M</button>' +
+                '<button class="sizetab" data-act="size" data-size="large" title="Large cards" style="' + sizeTabStyle(state.cardSize === 'large') + '">L</button>' +
+              '</div>' +
+              '<button class="theme-btn" data-act="theme" title="Toggle light / dark" style="width:40px;height:40px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:16px;cursor:pointer;box-shadow:var(--shadow)">' + (state.theme === 'dark' ? '☀' : '☾') + '</button>' +
               '<button class="primary-btn" data-act="add" style="height:40px;padding:0 18px;border-radius:999px;border:0;background:var(--navy);color:#fff;font-size:14px;font-weight:600;cursor:pointer;box-shadow:var(--shadow);display:flex;align-items:center;gap:8px"><span style="font-size:17px;line-height:1">+</span>Add link</button>' +
             '</div>' +
           '</header>' +
@@ -233,103 +382,106 @@
 
           '<div id="content"></div>' +
 
-          '<footer style="display:flex;align-items:center;gap:10px;padding-top:6px;font-size:12.5px;color:var(--text-dim)">' +
+          '<footer style="display:flex;align-items:center;gap:10px;padding-top:6px;font-size:12.5px;color:var(--text-dim);flex-wrap:wrap">' +
             '<span>Drag a tile to reorder · ★ to pin · saved in this browser</span>' +
             '<span style="flex:1;height:1px;background:var(--line)"></span>' +
+            '<button class="reset-btn" data-act="logofit" title="How logos fill their frame" style="border:0;background:transparent;color:var(--text-dim);font-size:12.5px;cursor:pointer;text-decoration:underline">Logos: ' + state.logoFit + '</button>' +
             '<button class="reset-btn" data-act="reset" style="border:0;background:transparent;color:var(--text-dim);font-size:12.5px;cursor:pointer;text-decoration:underline">Reset to defaults</button>' +
           '</footer>' +
         '</div>' +
         '<div id="modal"></div>' +
       '</div>';
 
-    // search input listeners (attached once per shell build)
     var q = document.getElementById('q');
     q.addEventListener('input', function (e) { state.query = e.target.value; renderContent(); });
     q.addEventListener('keydown', onSearchKey);
-
     renderContent();
   }
 
-  function tabStyle(on) {
-    return 'border:0;background:' + (on ? 'var(--navy)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--text-dim)') + ';font-size:13px;font-weight:600;padding:7px 15px;border-radius:999px;cursor:pointer';
+  function actionsHTML(l, pos) {
+    return '<div style="' + pos + '">' +
+      '<button data-act="fav" data-id="' + esc(l.id) + '" title="Pin" style="' + l.favS + '">★</button>' +
+      '<button class="edit-btn" data-act="edit" data-id="' + esc(l.id) + '" title="Edit" style="width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:var(--text-dim);font-size:12px;cursor:pointer;opacity:.55">✎</button>' +
+    '</div>';
   }
 
+  // Pinned tile: small square logo left of name/host.
   function tileHTML(l) {
-    // pinned tile (horizontal)
-    return '<a class="tile link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" draggable="true" data-id="' + esc(l.id) + '" style="position:relative;display:flex;align-items:center;gap:13px;background:var(--tile);border:1px solid var(--line);border-radius:16px;padding:15px;box-shadow:var(--shadow);color:var(--text);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease">' +
-      '<span style="' + l.badge + '">' + esc(l.initials) + '</span>' +
+    return '<a class="tile link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" draggable="true" data-id="' + esc(l.id) + '" style="' + l.pinnedStyle + '">' +
+      slot(l.raw, l.logoWrapStyle, false) +
       '<span style="display:flex;flex-direction:column;gap:2px;min-width:0">' +
-        '<span style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.name) + '</span>' +
-        '<span style="font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.host) + '</span>' +
+        '<span style="' + l.nameStyle + '">' + esc(l.name) + '</span>' +
+        '<span style="' + l.hostStyle + '">' + esc(l.host) + '</span>' +
       '</span>' +
     '</a>';
   }
 
+  // Grouped card: full-width logo banner on top, text beneath.
   function cardHTML(l) {
-    return '<div class="card" draggable="true" data-id="' + esc(l.id) + '" style="position:relative;background:var(--tile);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease">' +
-      '<a class="link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" style="display:flex;flex-direction:column;gap:12px;padding:17px 17px 15px;color:var(--text)">' +
-        '<span style="' + l.badge + '">' + esc(l.initials) + '</span>' +
-        '<span style="display:flex;flex-direction:column;gap:3px;min-width:0">' +
-          '<span style="font-size:16px;font-weight:600;letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.name) + '</span>' +
-          '<span style="font-size:12.5px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.host) + '</span>' +
+    return '<div class="card" draggable="true" data-id="' + esc(l.id) + '" style="' + l.cardOuterStyle + '">' +
+      '<a class="link-btn" draggable="false" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" style="' + l.cardAnchorStyle + '">' +
+        slot(l.raw, l.cardLogoWrapStyle, true) +
+        '<span style="' + l.cardTextWrapStyle + '">' +
+          '<span style="' + l.nameStyle + '">' + esc(l.name) + '</span>' +
+          '<span style="' + l.hostStyle + '">' + esc(l.host) + '</span>' +
         '</span>' +
       '</a>' +
-      '<div style="position:absolute;top:11px;right:11px;display:flex;gap:4px">' +
-        '<button data-act="fav" data-id="' + esc(l.id) + '" title="Pin" style="' + l.favS + '">★</button>' +
-        '<button class="edit-btn" data-act="edit" data-id="' + esc(l.id) + '" title="Edit" style="width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:var(--text-dim);font-size:12px;cursor:pointer;opacity:.55">✎</button>' +
-      '</div>' +
+      actionsHTML(l, 'position:absolute;top:11px;right:11px;display:flex;gap:4px') +
     '</div>';
   }
 
+  // Compact row: small square logo, name, right-aligned host.
   function compactRowHTML(l) {
     return '<div class="compact-row" draggable="true" data-id="' + esc(l.id) + '" style="display:flex;align-items:center;border-radius:12px">' +
-      '<a class="link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" style="flex:1;display:flex;align-items:center;gap:12px;padding:10px 8px 10px 10px;min-width:0;color:var(--text)">' +
-        '<span style="' + l.dot + '"></span>' +
-        '<span style="font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.name) + '</span>' +
-        '<span style="margin-left:auto;font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44%">' + esc(l.host) + '</span>' +
+      '<a class="link-btn" draggable="false" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" style="flex:1;display:flex;align-items:center;gap:12px;padding:10px 8px 10px 10px;min-width:0;color:var(--text)">' +
+        slot(l.raw, l.rowLogoWrapStyle, false) +
+        '<span style="' + l.nameStyle + '">' + esc(l.name) + '</span>' +
+        '<span style="' + l.hostInlineStyle + '">' + esc(l.host) + '</span>' +
       '</a>' +
-      '<div style="display:flex;gap:2px;padding-right:8px">' +
-        '<button data-act="fav" data-id="' + esc(l.id) + '" title="Pin" style="' + l.favS + '">★</button>' +
-        '<button class="edit-btn" data-act="edit" data-id="' + esc(l.id) + '" title="Edit" style="width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:var(--text-dim);font-size:12px;cursor:pointer;opacity:.55">✎</button>' +
-      '</div>' +
+      actionsHTML(l, 'display:flex;gap:2px;padding-right:8px') +
     '</div>';
   }
 
-  function sectionLabel(text, color) {
-    return '<h2 style="margin:0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:14px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:' + color + '">' + esc(text) + '</h2>';
+  function colorSwatch(name) {
+    return '<input type="color" data-gc="' + esc(name) + '" value="' + esc(gcFor(name)) + '" title="Change ' + esc(name) + ' colour" class="gc-swatch" style="width:20px;height:20px;flex:none;padding:0;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer">';
+  }
+  function groupHeader(g, fontSize, collapsed) {
+    return '<div style="display:flex;align-items:center;gap:8px">' +
+      '<button data-act="collapse" data-group="' + esc(g.name) + '" class="chev" title="' + (collapsed ? 'Expand' : 'Collapse') + '" style="width:22px;height:22px;flex:none;display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:var(--gc);font-size:11px;cursor:pointer;transition:transform .15s ease;transform:rotate(' + (collapsed ? '-90deg' : '0deg') + ')">▼</button>' +
+      '<h2 data-act="collapse" data-group="' + esc(g.name) + '" style="margin:0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:' + fontSize + ';font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--gc);cursor:pointer">' + esc(g.name) + '</h2>' +
+      '<span style="flex:1;height:1px;background:var(--gc);opacity:.35"></span>' +
+      '<span style="font-size:12px;font-weight:600;color:var(--gc)">' + g.count + '</span>' +
+      colorSwatch(g.name) +
+    '</div>';
   }
 
   function renderContent() {
-    var v = view();
+    var v = view(), s = sz();
     var hintEl = document.getElementById('hint');
     if (hintEl) {
-      hintEl.textContent = v.q
-        ? (v.visible.length + ' match' + (v.visible.length === 1 ? '' : 'es'))
-        : 'Web search ↵';
+      hintEl.textContent = v.q ? (v.visible.length + ' match' + (v.visible.length === 1 ? '' : 'es')) : 'Web search ↵';
     }
 
     var html = '';
 
-    // Pinned (hidden when query active or none pinned)
     if (!v.q && v.favourites.length) {
       html += '<section style="display:flex;flex-direction:column;gap:14px">' +
-        '<div style="display:flex;align-items:baseline;gap:10px">' + sectionLabel('Pinned', 'var(--text-dim)') +
+        '<div style="display:flex;align-items:baseline;gap:10px">' +
+          '<h2 style="margin:0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:14px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim)">Pinned</h2>' +
           '<span style="font-size:13px;color:var(--text-dim)">Your most-used tools</span></div>' +
-        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(206px,1fr));gap:14px">' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(' + Math.max(s.grid - 24, 150) + 'px,1fr));gap:' + s.gap + 'px">' +
           v.favourites.map(tileHTML).join('') + '</div></section>';
     }
 
-    // Recent (hidden when query active or none)
     if (!v.q && v.recents.length) {
       html += '<section style="display:flex;flex-wrap:wrap;align-items:center;gap:9px">' +
         '<h2 style="margin:0 6px 0 0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:14px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim)">Recent</h2>' +
         v.recents.map(function (l) {
           return '<a class="recent-chip link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:7px 14px 7px 9px;font-size:13px;font-weight:600;color:var(--text)">' +
-            '<span style="' + l.dot + '"></span>' + esc(l.name) + '</a>';
+            '<span style="' + l.dotStyle + '"></span>' + esc(l.name) + '</a>';
         }).join('') + '</section>';
     }
 
-    // Empty state
     if (state.links.length > 0 && v.visible.length === 0) {
       html += '<div style="text-align:center;padding:70px 20px;border:1px dashed var(--line-strong);border-radius:20px;color:var(--text-dim)">' +
         '<div style="font-size:17px;font-weight:600;color:var(--text);margin-bottom:6px">Nothing matches “' + esc(state.query) + '”</div>' +
@@ -337,22 +489,20 @@
     } else if (state.layout === 'grouped') {
       html += '<div style="display:flex;flex-direction:column;gap:30px">' +
         v.groups.map(function (g) {
-          return '<section style="display:flex;flex-direction:column;gap:14px">' +
-            '<div style="display:flex;align-items:center;gap:12px">' + sectionLabel(g.name, 'var(--navy)') +
-              '<span style="flex:1;height:1px;background:var(--line)"></span>' +
-              '<span style="font-size:12px;font-weight:600;color:var(--text-dim)">' + g.count + '</span></div>' +
-            '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px">' +
-              g.links.map(cardHTML).join('') + '</div></section>';
+          var collapsed = !!state.collapsed[g.name];
+          return '<section style="display:flex;flex-direction:column;gap:14px;--gc:' + gcFor(g.name) + '">' +
+            groupHeader(g, '14px', collapsed) +
+            (collapsed ? '' :
+              '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(' + s.grid + 'px,1fr));gap:' + s.gap + 'px">' +
+              g.links.map(cardHTML).join('') + '</div>') + '</section>';
         }).join('') + '</div>';
     } else {
-      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">' +
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;align-items:start">' +
         v.groups.map(function (g) {
-          return '<section style="background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:6px 6px 8px">' +
-            '<div style="display:flex;align-items:center;gap:10px;padding:13px 14px 11px">' +
-              '<h2 style="margin:0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:13.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--navy)">' + esc(g.name) + '</h2>' +
-              '<span style="flex:1;height:1px;background:var(--line)"></span>' +
-              '<span style="font-size:12px;font-weight:600;color:var(--text-dim)">' + g.count + '</span></div>' +
-            '<div style="display:flex;flex-direction:column">' + g.links.map(compactRowHTML).join('') + '</div></section>';
+          var collapsed = !!state.collapsed[g.name];
+          return '<section style="background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:6px 6px ' + (collapsed ? '6px' : '8px') + ';--gc:' + gcFor(g.name) + '">' +
+            '<div style="padding:13px 14px 11px">' + groupHeader(g, '13.5px', collapsed) + '</div>' +
+            (collapsed ? '' : '<div style="display:flex;flex-direction:column">' + g.links.map(compactRowHTML).join('') + '</div>') + '</section>';
         }).join('') + '</div>';
     }
 
@@ -365,19 +515,21 @@
     state.modalOpen = true;
     state.editId = editId || null;
     var v = view();
-    var draft = { name: '', url: '', group: v.groupNames[0] || 'Operations' };
+    var draft = { name:'', url:'', group:v.groupNames[0] || 'Operations', logo:'', icon:'', color:'' };
     if (editId) {
       var l = findLink(editId);
-      if (l) draft = { name: l.name, url: l.url, group: l.group };
+      if (l) draft = { name:l.name, url:l.url, group:l.group, logo:l.logo || '', icon:l.icon || '', color:l.color || '' };
     }
+    var autoColor = !draft.color;
+    var colorVal = draft.color || gcFor(draft.group);
 
     var suggestions = [];
     state.links.forEach(function (l) { if (suggestions.indexOf(l.group) < 0) suggestions.push(l.group); });
+    var iconKeys = ['google','gmail','drive','docs','microsoft','onedrive','outlook','amazon','xero','wix','dropbox','postoffice','globe'];
 
-    var m = document.getElementById('modal');
-    m.innerHTML =
-      '<div id="overlay" style="position:fixed;inset:0;background:rgba(12,19,48,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px;z-index:50">' +
-        '<div id="dialog" style="width:100%;max-width:440px;background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow-lift);padding:24px">' +
+    document.getElementById('modal').innerHTML =
+      '<div id="overlay" style="position:fixed;inset:0;background:rgba(12,19,48,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px;z-index:50;overflow:auto">' +
+        '<div id="dialog" style="width:100%;max-width:440px;background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow-lift);padding:24px;margin:auto">' +
           '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">' +
             '<h3 style="margin:0;font-size:19px;font-weight:700">' + (editId ? 'Edit link' : 'Add a link') + '</h3>' +
             '<span style="flex:1"></span>' +
@@ -388,6 +540,16 @@
             field('URL', 'd-url', draft.url, 'https://…') +
             field('Group', 'd-group', draft.group, 'Operations', 'qos-groups') +
             '<datalist id="qos-groups">' + suggestions.map(function (s) { return '<option value="' + esc(s) + '">'; }).join('') + '</datalist>' +
+            field('Logo image URL', 'd-logo', draft.logo, 'https://…/logo.png — blank uses the icon below') +
+            field('Icon', 'd-icon', draft.icon, 'Auto · or google, gmail, emoji…', 'qos-icons') +
+            '<datalist id="qos-icons">' + iconKeys.map(function (s) { return '<option value="' + esc(s) + '">'; }).join('') + '</datalist>' +
+            '<div style="display:flex;flex-direction:column;gap:6px">' +
+              '<span style="font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim)">Colour</span>' +
+              '<div style="display:flex;align-items:center;gap:12px">' +
+                '<input type="color" id="d-color" value="' + esc(colorVal) + '" style="width:46px;height:38px;flex:none;padding:0;border:1px solid var(--line);border-radius:11px;background:none;cursor:pointer">' +
+                '<label style="display:flex;align-items:center;gap:7px;font-size:14px;font-weight:500;color:var(--text);cursor:pointer"><input type="checkbox" id="d-color-auto"' + (autoColor ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer"> Auto (from name)</label>' +
+              '</div>' +
+            '</div>' +
           '</div>' +
           '<div style="display:flex;align-items:center;gap:10px;margin-top:22px">' +
             (editId ? '<button class="delete-btn" data-act="delete" style="height:42px;padding:0 16px;border-radius:11px;border:1px solid var(--line);background:transparent;color:#C2415A;font-size:14px;font-weight:600;cursor:pointer">Delete</button>' : '') +
@@ -409,8 +571,7 @@
   }
 
   function closeModal() {
-    state.modalOpen = false;
-    state.editId = null;
+    state.modalOpen = false; state.editId = null;
     document.getElementById('modal').innerHTML = '';
   }
 
@@ -418,49 +579,69 @@
     var name = (document.getElementById('d-name').value || '').trim();
     var url = (document.getElementById('d-url').value || '').trim();
     var group = (document.getElementById('d-group').value || '').trim() || 'Other';
+    var logo = (document.getElementById('d-logo').value || '').trim();
+    var icon = (document.getElementById('d-icon').value || '').trim();
+    var auto = document.getElementById('d-color-auto').checked;
+    var color = auto ? '' : (document.getElementById('d-color').value || '');
     if (!name || !url) return;
     if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
 
     if (state.editId) {
       var l = findLink(state.editId);
-      if (l) { l.name = name; l.url = url; l.group = group; }
+      if (l) {
+        l.name = name; l.url = url; l.group = group;
+        if (logo) l.logo = logo; else delete l.logo;
+        if (icon) l.icon = icon; else delete l.icon;
+        if (color) l.color = color; else delete l.color;
+      }
     } else {
-      state.links.push({ id: 'l' + Date.now(), name: name, url: url, group: group, fav: false });
+      var link = { id:'l' + Date.now(), name:name, url:url, group:group, fav:false };
+      if (logo) link.logo = logo;
+      if (icon) link.icon = icon;
+      if (color) link.color = color;
+      state.links.push(link);
     }
-    persist();
-    closeModal();
-    renderContent();
+    persist(); closeModal(); renderContent();
   }
 
   function deleteLink() {
     var id = state.editId;
     state.links = state.links.filter(function (l) { return l.id !== id; });
     state.recents = state.recents.filter(function (r) { return r !== id; });
-    persist();
-    closeModal();
-    renderContent();
+    persist(); closeModal(); renderContent();
   }
 
   // ================= EVENTS =================
 
   function onSearchKey(e) {
     if (e.key !== 'Enter') return;
-    var v = view();
-    var first = v.visible[0];
+    var v = view(), first = v.visible[0];
     if (first && v.q) { recordOpen(first.id); window.open(first.url, '_blank', 'noopener'); }
     else if (v.q) window.open('https://www.google.com/search?q=' + encodeURIComponent(state.query), '_blank', 'noopener');
   }
 
   function setLayout(layout) {
-    state.layout = layout;
-    persist();
-    // update tab styles + content without rebuilding search field
+    state.layout = layout; persist();
     document.querySelectorAll('.tab').forEach(function (b) {
       b.setAttribute('style', tabStyle(b.getAttribute('data-act') === layout));
     });
     renderContent();
   }
-
+  function setSize(size) {
+    if (!SIZES[size]) return;
+    state.cardSize = size; persist();
+    document.querySelectorAll('.sizetab').forEach(function (b) {
+      b.setAttribute('style', sizeTabStyle(b.getAttribute('data-size') === size));
+    });
+    renderContent();
+  }
+  function toggleLogoFit() {
+    state.logoFit = state.logoFit === 'contain' ? 'cover' : 'contain';
+    persist();
+    var b = document.querySelector('[data-act="logofit"]');
+    if (b) b.textContent = 'Logos: ' + state.logoFit;
+    renderContent();
+  }
   function toggleTheme() {
     state.theme = state.theme === 'dark' ? 'light' : 'dark';
     persist();
@@ -468,34 +649,34 @@
     var tb = document.querySelector('.theme-btn');
     if (tb) tb.textContent = state.theme === 'dark' ? '☀' : '☾';
   }
-
+  function toggleCollapse(name) {
+    if (state.collapsed[name]) delete state.collapsed[name]; else state.collapsed[name] = true;
+    persist(); renderContent();
+  }
   function resetAll() {
-    // Re-seed from the shared config, discarding local edits.
     fetchConfig().then(function (config) {
       var cfgLinks = (config && Array.isArray(config.links)) ? config.links : [];
-      state.links = cfgLinks.map(function (l, i) {
-        return { id: 'l' + i, name: l.name, url: l.url, group: l.group || 'Other', fav: !!l.fav };
-      });
+      state.links = mapConfigLinks(cfgLinks);
       state.recents = [];
+      state.groupColors = (config && config.groupColors) || {};
+      state.collapsed = {};
       state.version = (config && config.version) || state.version;
-      persist();
-      renderContent();
+      persist(); renderContent();
     });
   }
 
-  // Global click delegation
   document.addEventListener('click', function (e) {
-    // record recent when a link anchor is clicked (do not preventDefault)
     var anchor = e.target.closest('[data-open]');
-    if (anchor) { recordOpen(anchor.getAttribute('data-open')); /* allow navigation */ }
+    if (anchor) recordOpen(anchor.getAttribute('data-open'));
 
     var btn = e.target.closest('[data-act]');
     if (!btn) return;
-    var act = btn.getAttribute('data-act');
-    var id = btn.getAttribute('data-id');
+    var act = btn.getAttribute('data-act'), id = btn.getAttribute('data-id');
 
     if (act === 'grouped') setLayout('grouped');
     else if (act === 'compact') setLayout('compact');
+    else if (act === 'size') setSize(btn.getAttribute('data-size'));
+    else if (act === 'logofit') toggleLogoFit();
     else if (act === 'theme') toggleTheme();
     else if (act === 'add') openModal(null);
     else if (act === 'reset') resetAll();
@@ -504,35 +685,63 @@
     else if (act === 'close') closeModal();
     else if (act === 'save') saveLink();
     else if (act === 'delete') deleteLink();
+    else if (act === 'collapse') toggleCollapse(btn.getAttribute('data-group'));
   });
 
-  // Overlay click closes modal (but not clicks inside the dialog)
+  // Editable group colours — live update without re-render so the picker stays open.
+  document.addEventListener('input', function (e) {
+    var sw = e.target.closest ? e.target.closest('input.gc-swatch') : null;
+    if (!sw) return;
+    var name = sw.getAttribute('data-gc'), color = sw.value;
+    state.groupColors[name] = color;
+    document.querySelectorAll('.gc-swatch').forEach(function (el) {
+      if (el.getAttribute('data-gc') !== name) return;
+      var sec = el.closest('section');
+      if (sec) sec.style.setProperty('--gc', color);
+    });
+    persist();
+  });
+
   document.addEventListener('mousedown', function (e) {
     if (e.target && e.target.id === 'overlay') closeModal();
   });
 
-  // Drag & drop reorder (delegated)
+  // Drag & drop reorder with visual feedback.
+  function clearDropTargets() {
+    document.querySelectorAll('.drop-target').forEach(function (el) { el.classList.remove('drop-target'); });
+  }
   document.addEventListener('dragstart', function (e) {
     var el = e.target.closest('[data-id]');
     if (!el) return;
     drag = el.getAttribute('data-id');
+    el.classList.add('dragging');
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
       try { e.dataTransfer.setData('text/plain', drag); } catch (err) {}
     }
   });
   document.addEventListener('dragover', function (e) {
-    if (e.target.closest('[data-id]')) e.preventDefault();
+    var el = e.target.closest('[data-id]');
+    if (!el) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    if (el.getAttribute('data-id') !== drag && !el.classList.contains('drop-target')) {
+      clearDropTargets(); el.classList.add('drop-target');
+    }
   });
   document.addEventListener('drop', function (e) {
     var el = e.target.closest('[data-id]');
+    clearDropTargets();
     if (!el) return;
     e.preventDefault();
     move(drag, el.getAttribute('data-id'));
     drag = null;
   });
+  document.addEventListener('dragend', function () {
+    drag = null; clearDropTargets();
+    document.querySelectorAll('.dragging').forEach(function (el) { el.classList.remove('dragging'); });
+  });
 
-  // Esc closes modal
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && state.modalOpen) closeModal();
   });
@@ -550,10 +759,11 @@
     try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
     fetchConfig().then(function (config) {
       if (!config) {
-        // Config unreachable: fall back to whatever we have saved, else empty.
         if (saved && Array.isArray(saved.links)) {
           state.links = saved.links; state.recents = saved.recents || [];
+          state.groupColors = saved.groupColors || {}; state.collapsed = saved.collapsed || {};
           state.theme = saved.theme || state.theme; state.layout = saved.layout || state.layout;
+          state.cardSize = saved.cardSize || state.cardSize; state.logoFit = saved.logoFit || state.logoFit;
           state.version = saved.version || 0;
         }
       } else {
