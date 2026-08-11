@@ -41,15 +41,23 @@
   .modal-close:hover{color:var(--text)!important}
   .reset-btn:hover{color:var(--navy)!important}
   .delete-btn:hover{border-color:#C2415A!important}
-  .link-btn{-webkit-tap-highlight-color:transparent}
+  .link-btn{-webkit-tap-highlight-color:transparent;cursor:pointer}
 
   /* Drag & drop feedback */
   [data-id]{cursor:grab}
   [data-id]:active{cursor:grabbing}
-  .link-btn{cursor:pointer}
   .dragging{opacity:.4}
   .drop-target{outline:2px dashed var(--gc,var(--navy));outline-offset:2px;border-radius:12px}
   .chev:hover{opacity:.7}
+
+  /* Logo slots: image fills the frame per logoFit; fallback centres a brand
+     mark or the monogram (the design's sanctioned no-logo fallback). */
+  .logo-img{width:100%;height:100%;display:block}
+  .logo-fb{width:100%;height:100%;display:flex;align-items:center;justify-content:center;
+           font-family:'Barlow Condensed',Barlow,sans-serif;font-weight:700;letter-spacing:.02em}
+  .logo-fb.big > .logo-fb svg{width:60%;height:60%}
+  .logo-fb svg{display:block}
+
   /* Native colour-input chrome reset */
   input[type=color]{-webkit-appearance:none;appearance:none}
   input[type=color]::-webkit-color-swatch-wrapper{padding:0}
@@ -66,22 +74,33 @@
 
   var KEY = 'qos-dash-v1';
   var HUES = [258, 232, 212, 282, 196, 244];
+  var DEFAULT_GC = '#3A55C6';
+
+  // Card size presets — scale grid, gaps, radii, logo height, badge and type.
+  var SIZES = {
+    compact:     { grid:180, gap:10, radius:14, pad:'12px 12px 11px', innerGap:8,  pinPad:'11px 12px', pinGap:10, badge:32, badgeFont:13, badgeRadius:9,  nameFont:13.5, hostFont:11.5, logoHeight:88 },
+    comfortable: { grid:230, gap:14, radius:18, pad:'17px 17px 15px', innerGap:12, pinPad:'15px 15px', pinGap:13, badge:38, badgeFont:16, badgeRadius:11, nameFont:16,   hostFont:12.5, logoHeight:116 },
+    large:       { grid:300, gap:18, radius:20, pad:'24px 24px 20px', innerGap:14, pinPad:'19px 20px', pinGap:16, badge:52, badgeFont:20, badgeRadius:14, nameFont:19,   hostFont:14,   logoHeight:152 }
+  };
 
   // ---- state ----
   var state = {
-    links: [],           // [{id,name,url,group,fav,color?,icon?}]
+    links: [],           // [{id,name,url,group,fav,logo?,icon?,color?}]
     recents: [],         // link ids, most-recent first, max 6
-    groupColors: {},     // { groupName: '#rrggbb' } — editable per-tab colour
-    collapsed: {},       // { groupName: true } — collapsed groups (per browser)
+    groupColors: {},     // { groupName: '#rrggbb' }
+    collapsed: {},       // { groupName: true }
     theme: 'light',
-    layout: 'grouped',
+    layout: 'grouped',   // grouped | compact
+    cardSize: 'comfortable',
+    logoFit: 'contain',  // contain | cover
     query: '',
     modalOpen: false,
     editId: null,
-    version: 0           // config version this browser was seeded from
+    version: 0
   };
   var drag = null;
-  var DEFAULT_GC = '#3A55C6'; // fallback colour for a group with none set
+
+  function sz() { return SIZES[state.cardSize] || SIZES.comfortable; }
 
   // ---- helpers ----
   function esc(s) {
@@ -103,13 +122,15 @@
     return HUES[h % HUES.length];
   }
   function gcFor(name) { return state.groupColors[name] || DEFAULT_GC; }
-
   function hexToRgba(hex, a) {
     var h = String(hex).replace('#', '');
     if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
     var n = parseInt(h, 16);
     if (isNaN(n)) return 'rgba(90,100,140,' + a + ')';
     return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+  function favStyle(fav) {
+    return "width:26px;height:26px;border-radius:8px;border:0;background:transparent;font-size:13px;cursor:pointer;color:" + (fav ? 'var(--navy)' : 'var(--text-dim)') + ";opacity:" + (fav ? 1 : 0.5);
   }
 
   // ---- brand icons (inline SVG, self-contained/offline) ----
@@ -128,15 +149,11 @@
     postoffice: '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="3" y="3" width="18" height="18" rx="3" fill="#E4002B"/><text x="12" y="16" font-family="Arial,sans-serif" font-weight="700" font-size="10" fill="#fff" text-anchor="middle">PO</text></svg>',
     globe: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#5C6588" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>'
   };
-  // aliases → canonical brand key
-  var BRAND_ALIAS = { forms: 'docs', sheets: 'docs', office: 'microsoft', office365: 'microsoft', sharepoint: 'onedrive', teams: 'microsoft', hotmail: 'outlook' };
+  var BRAND_ALIAS = { forms:'docs', sheets:'docs', office:'microsoft', office365:'microsoft', sharepoint:'onedrive', teams:'microsoft', hotmail:'outlook' };
   function brandKey(k) { k = String(k || '').toLowerCase().trim(); return BRAND_ALIAS[k] || (BRANDS[k] ? k : ''); }
 
-  // Guess a brand icon from a link's URL / name.
   function detectBrand(url, name) {
-    var h = host(url).toLowerCase();
-    var n = (name || '').toLowerCase();
-    var s = h + ' ' + n;
+    var s = host(url).toLowerCase() + ' ' + (name || '').toLowerCase();
     if (/mail\.google|gmail/.test(s)) return 'gmail';
     if (/drive\.google/.test(s)) return 'drive';
     if (/docs\.google|forms\.google|\bforms\b|google\s*forms|sheets/.test(s)) return 'docs';
@@ -144,7 +161,7 @@
     if (/postoffice|post ?office|drop.?and.?go/.test(s)) return 'postoffice';
     if (/onedrive|1drv|live\.com|sharepoint/.test(s)) return 'onedrive';
     if (/outlook|hotmail/.test(s)) return 'outlook';
-    if (/microsoft|office\.com|office365|office365|\bms ?office\b|\bteams\b/.test(s)) return 'microsoft';
+    if (/microsoft|office\.com|office365|\bms ?office\b|\bteams\b/.test(s)) return 'microsoft';
     if (/amazon/.test(s)) return 'amazon';
     if (/xero/.test(s)) return 'xero';
     if (/wix/.test(s)) return 'wix';
@@ -152,83 +169,97 @@
     return '';
   }
 
-  // Resolve accent colours for a link (custom hex, else name-hashed hue).
+  // Accent colours: explicit hex, else the name-hashed hue.
   function accent(l) {
-    if (l.color) {
-      return { text: l.color, bg: hexToRgba(l.color, 0.14), border: hexToRgba(l.color, 0.34), dot: l.color };
-    }
+    if (l.color) return { text:l.color, bg:hexToRgba(l.color, .14), border:hexToRgba(l.color, .34), dot:l.color };
     var hue = hueFor(l.name);
     return {
       text: 'oklch(0.42 0.14 ' + hue + ')',
-      bg: 'oklch(0.93 0.045 ' + hue + ')',
-      border: 'oklch(0.87 0.06 ' + hue + ')',
-      dot: 'oklch(0.58 0.15 ' + hue + ')'
+      bg:   'oklch(0.93 0.045 ' + hue + ')',
+      border:'oklch(0.87 0.06 ' + hue + ')',
+      dot:  'oklch(0.58 0.15 ' + hue + ')'
     };
   }
 
-  // Badge inner content: explicit icon, else auto-detected brand, else initials.
-  function badgeInner(l) {
+  // Contents of a logo slot: real logo image → brand mark → monogram.
+  function logoContent(l, big) {
+    var ac = accent(l);
+    if (l.logo) {
+      return '<img class="logo-img" src="' + esc(l.logo) + '" alt="" loading="lazy" ' +
+        'style="object-fit:' + state.logoFit + '" ' +
+        'onerror="this.parentNode.innerHTML=this.parentNode.getAttribute(\'data-fb\')">';
+    }
+    return fallbackMark(l, big, ac);
+  }
+  // No logo image: show the brand mark / monogram. On the small square slots the
+  // badge fills the slot; on the wide card banner it sits centred on the neutral
+  // slot background, keeping the design's --surface2 logo area.
+  function fallbackMark(l, big, ac) {
     var raw = (l.icon || '').trim();
     var key = brandKey(raw || detectBrand(l.url, l.name));
-    if (key && BRANDS[key]) return BRANDS[key];
-    if (/^https?:\/\//i.test(raw)) {
-      return '<img src="' + esc(raw) + '" alt="" style="width:24px;height:24px;object-fit:contain" ' +
-        'onerror="this.parentNode.textContent=\'' + esc(initials(l.name)) + '\'">';
+    var s = sz();
+    var inner;
+    if (key && BRANDS[key]) inner = BRANDS[key];
+    else if (/^https?:\/\//i.test(raw)) inner = '<img class="logo-img" src="' + esc(raw) + '" alt="" style="object-fit:' + state.logoFit + '">';
+    else if (raw) inner = '<span style="font-size:' + (big ? 26 : 20) + 'px;line-height:1">' + esc(raw) + '</span>';
+    else inner = esc(initials(l.name));
+
+    if (!big) {
+      return '<span class="logo-fb" style="background:' + ac.bg + ';color:' + ac.text + ';font-size:' + s.badgeFont + 'px">' + inner + '</span>';
     }
-    if (raw) return '<span style="font-size:20px;line-height:1">' + esc(raw) + '</span>'; // emoji / short text
-    return esc(initials(l.name));
+    var badge = Math.round(s.badge * 1.35);
+    return '<span class="logo-fb big">' +
+      '<span class="logo-fb" style="width:' + badge + 'px;height:' + badge + 'px;flex:none;border-radius:' + s.badgeRadius + 'px;' +
+        'background:' + ac.bg + ';color:' + ac.text + ';border:1px solid ' + ac.border + ';font-size:' + Math.round(s.badgeFont * 1.25) + 'px">' +
+        inner + '</span></span>';
   }
-  function badgeStyle(hue) {
-    return "display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex:none;border-radius:11px;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:16px;font-weight:700;letter-spacing:.02em;color:oklch(0.42 0.14 " + hue + ");background:oklch(0.93 0.045 " + hue + ");border:1px solid oklch(0.87 0.06 " + hue + ")";
-  }
-  function dotStyle(hue) {
-    return "width:9px;height:9px;flex:none;border-radius:3px;background:oklch(0.58 0.15 " + hue + ")";
-  }
-  function favStyle(fav) {
-    return "width:26px;height:26px;border-radius:8px;border:0;background:transparent;font-size:13px;cursor:pointer;color:" + (fav ? 'var(--navy)' : 'var(--text-dim)') + ";opacity:" + (fav ? 1 : 0.5);
+  // Fallback markup stashed on the slot so a broken image can swap to it.
+  function slot(l, wrapStyle, big) {
+    var ac = accent(l);
+    return '<span style="' + wrapStyle + '" data-fb="' + esc(fallbackMark(l, big, ac)) + '">' + logoContent(l, big) + '</span>';
   }
 
   // ---- persistence ----
   function persist() {
     try {
       localStorage.setItem(KEY, JSON.stringify({
-        version: state.version,
-        links: state.links,
-        recents: state.recents,
-        groupColors: state.groupColors,
-        collapsed: state.collapsed,
-        theme: state.theme,
-        layout: state.layout
+        version: state.version, links: state.links, recents: state.recents,
+        groupColors: state.groupColors, collapsed: state.collapsed,
+        theme: state.theme, layout: state.layout,
+        cardSize: state.cardSize, logoFit: state.logoFit
       }));
     } catch (e) {}
   }
 
-  // ---- seeding from shared config ----
-  function seedFrom(config, saved) {
-    var cfgVersion = (config && config.version) || 1;
-    var cfgLinks = (config && Array.isArray(config.links)) ? config.links : [];
-    var cfgColors = (config && config.groupColors) || {};
-    var seeded = cfgLinks.map(function (l, i) {
-      var o = { id: 'l' + i, name: l.name, url: l.url, group: l.group || 'Other', fav: !!l.fav };
+  function mapConfigLinks(cfgLinks) {
+    return cfgLinks.map(function (l, i) {
+      var o = { id:'l' + i, name:l.name, url:l.url, group:l.group || 'Other', fav:!!l.fav };
+      if (l.logo) o.logo = l.logo;
       if (l.icon) o.icon = l.icon;
       if (l.color) o.color = l.color;
       return o;
     });
+  }
 
-    // Preserve personal UI prefs from any saved state.
+  function seedFrom(config, saved) {
+    var cfgVersion = (config && config.version) || 1;
+    var cfgLinks = (config && Array.isArray(config.links)) ? config.links : [];
+    var cfgColors = (config && config.groupColors) || {};
+
     if (saved) {
       state.theme = saved.theme || state.theme;
       state.layout = saved.layout || state.layout;
+      state.cardSize = saved.cardSize || state.cardSize;
+      state.logoFit = saved.logoFit || state.logoFit;
       state.collapsed = saved.collapsed || {};
     }
 
-    // Re-seed links + group colours whenever the shared config version changes.
     if (saved && Array.isArray(saved.links) && saved.version === cfgVersion) {
       state.links = saved.links;
       state.recents = Array.isArray(saved.recents) ? saved.recents : [];
       state.groupColors = saved.groupColors || cfgColors;
     } else {
-      state.links = seeded;
+      state.links = mapConfigLinks(cfgLinks);
       state.recents = [];
       state.groupColors = cfgColors;
     }
@@ -243,8 +274,7 @@
   }
   function recordOpen(id) {
     state.recents = [id].concat(state.recents.filter(function (r) { return r !== id; })).slice(0, 6);
-    persist();
-    renderContent();
+    persist(); renderContent();
   }
   function toggleFav(id) {
     var l = findLink(id);
@@ -261,19 +291,27 @@
     var item = state.links.splice(from, 1)[0];
     item.group = state.links[to > from ? to - 1 : to].group;
     state.links.splice(to, 0, item);
-    persist();
-    renderContent();
+    persist(); renderContent();
   }
 
   // ---- derived view ----
   function decorate(l) {
-    var ac = accent(l);
-    var badge = "display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex:none;border-radius:11px;overflow:hidden;font-family:'Barlow Condensed',Barlow,sans-serif;font-size:16px;font-weight:700;letter-spacing:.02em;color:" + ac.text + ";background:" + ac.bg + ";border:1px solid " + ac.border;
+    var s = sz(), ac = accent(l);
+    var padParts = s.pad.split(' ');
     return {
-      id: l.id, name: l.name, url: l.url, group: l.group, fav: l.fav,
-      host: host(l.url), initials: initials(l.name),
-      badge: badge, inner: badgeInner(l),
-      dot: 'width:9px;height:9px;flex:none;border-radius:3px;background:' + ac.dot,
+      id:l.id, name:l.name, url:l.url, group:l.group, fav:l.fav, raw:l,
+      host: host(l.url),
+      nameStyle: 'font-size:' + s.nameFont + 'px;font-weight:600;letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis',
+      hostStyle: 'font-size:' + s.hostFont + 'px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis',
+      hostInlineStyle: 'margin-left:auto;font-size:' + s.hostFont + 'px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44%',
+      pinnedStyle: 'position:relative;display:flex;align-items:center;gap:' + s.pinGap + 'px;background:var(--tile);border:1px solid var(--line);border-radius:' + s.radius + 'px;padding:' + s.pinPad + ';box-shadow:var(--shadow);color:var(--text);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease',
+      cardOuterStyle: 'position:relative;background:var(--tile);border:1px solid var(--line);border-radius:' + s.radius + 'px;box-shadow:var(--shadow);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease',
+      cardAnchorStyle: 'display:flex;flex-direction:column;gap:' + s.innerGap + 'px;padding:0 0 ' + (padParts[2] || '15px') + ';color:var(--text)',
+      cardLogoWrapStyle: 'display:block;width:100%;height:' + s.logoHeight + 'px;border-radius:' + s.radius + 'px ' + s.radius + 'px 0 0;overflow:hidden;background:var(--surface2);margin-bottom:' + s.innerGap + 'px',
+      cardTextWrapStyle: 'display:flex;flex-direction:column;gap:3px;min-width:0;padding:0 ' + (padParts[1] || padParts[0]),
+      logoWrapStyle: 'display:block;width:' + s.badge + 'px;height:' + s.badge + 'px;flex:none;border-radius:9px;overflow:hidden;background:var(--surface2)',
+      rowLogoWrapStyle: 'display:block;width:' + Math.max(s.badge - 8, 20) + 'px;height:' + Math.max(s.badge - 8, 20) + 'px;flex:none;border-radius:7px;overflow:hidden;background:var(--surface2)',
+      dotStyle: 'width:9px;height:9px;flex:none;border-radius:3px;background:' + ac.dot,
       favS: favStyle(l.fav)
     };
   }
@@ -285,46 +323,53 @@
         (l.group || '').toLowerCase().indexOf(q) >= 0;
     };
     var visible = state.links.filter(match).map(decorate);
-
     var groupNames = [];
     visible.forEach(function (l) { if (groupNames.indexOf(l.group) < 0) groupNames.push(l.group); });
     var groups = groupNames.map(function (name) {
       var links = visible.filter(function (l) { return l.group === name; });
       return { name: name, links: links, count: links.length };
     });
-
     return {
-      q: q, visible: visible, groups: groups, groupNames: groupNames,
+      q:q, visible:visible, groups:groups, groupNames:groupNames,
       favourites: visible.filter(function (l) { return l.fav; }),
-      recents: state.recents.map(function (id) { return findLink(id); })
-        .filter(Boolean).map(decorate)
+      recents: state.recents.map(function (id) { return findLink(id); }).filter(Boolean).map(decorate)
     };
   }
 
   // ================= RENDER =================
 
+  function tabStyle(on) {
+    return 'border:0;background:' + (on ? 'var(--navy)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--text-dim)') + ';font-size:13px;font-weight:600;padding:7px 15px;border-radius:999px;cursor:pointer';
+  }
+  function sizeTabStyle(on) {
+    return 'border:0;background:' + (on ? 'var(--navy)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--text-dim)') + ';font-size:13px;font-weight:600;padding:7px 12px;border-radius:999px;cursor:pointer';
+  }
+
   function shell() {
     var hour = new Date().getHours();
     var greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-    var themeIcon = state.theme === 'dark' ? '☀' : '☾';
 
-    var root = document.getElementById('root');
-    root.innerHTML =
+    document.getElementById('root').innerHTML =
       '<div id="wrap" data-theme="' + esc(state.theme) + '" style="min-height:100vh;background:radial-gradient(1200px 600px at 50% -280px, var(--bg2), var(--bg) 70%);padding:34px 32px 72px;color:var(--text)">' +
         '<div style="max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:28px">' +
 
-          '<header style="display:flex;align-items:center;gap:18px">' +
+          '<header style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">' +
             '<img src="assets/qos-crest.png" alt="Queen of the South FC crest" style="width:56px;height:56px;border-radius:50%;background:#fff;box-shadow:var(--shadow);flex:none">' +
             '<div style="display:flex;flex-direction:column;gap:2px;margin-right:auto">' +
               '<div style="font-family:\'Barlow Condensed\',Barlow,sans-serif;font-weight:700;font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--navy)">Queen of the South FC</div>' +
               '<div style="font-size:26px;font-weight:700;letter-spacing:-.01em;line-height:1.1">' + greeting + ', Doonhamers</div>' +
             '</div>' +
-            '<div style="display:flex;align-items:center;gap:10px">' +
+            '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
               '<div style="display:flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;box-shadow:var(--shadow)">' +
                 '<button class="tab" data-act="grouped" style="' + tabStyle(state.layout === 'grouped') + '">Grouped</button>' +
                 '<button class="tab" data-act="compact" style="' + tabStyle(state.layout === 'compact') + '">Compact</button>' +
               '</div>' +
-              '<button class="theme-btn" data-act="theme" title="Toggle light / dark" style="width:40px;height:40px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:16px;cursor:pointer;box-shadow:var(--shadow)">' + themeIcon + '</button>' +
+              '<div style="display:flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;box-shadow:var(--shadow)" title="Card size">' +
+                '<button class="sizetab" data-act="size" data-size="compact" title="Compact cards" style="' + sizeTabStyle(state.cardSize === 'compact') + '">S</button>' +
+                '<button class="sizetab" data-act="size" data-size="comfortable" title="Comfortable cards" style="' + sizeTabStyle(state.cardSize === 'comfortable') + '">M</button>' +
+                '<button class="sizetab" data-act="size" data-size="large" title="Large cards" style="' + sizeTabStyle(state.cardSize === 'large') + '">L</button>' +
+              '</div>' +
+              '<button class="theme-btn" data-act="theme" title="Toggle light / dark" style="width:40px;height:40px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:16px;cursor:pointer;box-shadow:var(--shadow)">' + (state.theme === 'dark' ? '☀' : '☾') + '</button>' +
               '<button class="primary-btn" data-act="add" style="height:40px;padding:0 18px;border-radius:999px;border:0;background:var(--navy);color:#fff;font-size:14px;font-weight:600;cursor:pointer;box-shadow:var(--shadow);display:flex;align-items:center;gap:8px"><span style="font-size:17px;line-height:1">+</span>Add link</button>' +
             '</div>' +
           '</header>' +
@@ -337,81 +382,73 @@
 
           '<div id="content"></div>' +
 
-          '<footer style="display:flex;align-items:center;gap:10px;padding-top:6px;font-size:12.5px;color:var(--text-dim)">' +
+          '<footer style="display:flex;align-items:center;gap:10px;padding-top:6px;font-size:12.5px;color:var(--text-dim);flex-wrap:wrap">' +
             '<span>Drag a tile to reorder · ★ to pin · saved in this browser</span>' +
             '<span style="flex:1;height:1px;background:var(--line)"></span>' +
+            '<button class="reset-btn" data-act="logofit" title="How logos fill their frame" style="border:0;background:transparent;color:var(--text-dim);font-size:12.5px;cursor:pointer;text-decoration:underline">Logos: ' + state.logoFit + '</button>' +
             '<button class="reset-btn" data-act="reset" style="border:0;background:transparent;color:var(--text-dim);font-size:12.5px;cursor:pointer;text-decoration:underline">Reset to defaults</button>' +
           '</footer>' +
         '</div>' +
         '<div id="modal"></div>' +
       '</div>';
 
-    // search input listeners (attached once per shell build)
     var q = document.getElementById('q');
     q.addEventListener('input', function (e) { state.query = e.target.value; renderContent(); });
     q.addEventListener('keydown', onSearchKey);
-
     renderContent();
   }
 
-  function tabStyle(on) {
-    return 'border:0;background:' + (on ? 'var(--navy)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--text-dim)') + ';font-size:13px;font-weight:600;padding:7px 15px;border-radius:999px;cursor:pointer';
+  function actionsHTML(l, pos) {
+    return '<div style="' + pos + '">' +
+      '<button data-act="fav" data-id="' + esc(l.id) + '" title="Pin" style="' + l.favS + '">★</button>' +
+      '<button class="edit-btn" data-act="edit" data-id="' + esc(l.id) + '" title="Edit" style="width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:var(--text-dim);font-size:12px;cursor:pointer;opacity:.55">✎</button>' +
+    '</div>';
   }
 
+  // Pinned tile: small square logo left of name/host.
   function tileHTML(l) {
-    // pinned tile (horizontal)
-    return '<a class="tile link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" draggable="true" data-id="' + esc(l.id) + '" style="position:relative;display:flex;align-items:center;gap:13px;background:var(--tile);border:1px solid var(--line);border-radius:16px;padding:15px;box-shadow:var(--shadow);color:var(--text);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease">' +
-      '<span style="' + l.badge + '">' + l.inner + '</span>' +
+    return '<a class="tile link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" draggable="true" data-id="' + esc(l.id) + '" style="' + l.pinnedStyle + '">' +
+      slot(l.raw, l.logoWrapStyle, false) +
       '<span style="display:flex;flex-direction:column;gap:2px;min-width:0">' +
-        '<span style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.name) + '</span>' +
-        '<span style="font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.host) + '</span>' +
+        '<span style="' + l.nameStyle + '">' + esc(l.name) + '</span>' +
+        '<span style="' + l.hostStyle + '">' + esc(l.host) + '</span>' +
       '</span>' +
     '</a>';
   }
 
+  // Grouped card: full-width logo banner on top, text beneath.
   function cardHTML(l) {
-    return '<div class="card" draggable="true" data-id="' + esc(l.id) + '" style="position:relative;background:var(--tile);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease">' +
-      '<a class="link-btn" draggable="false" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" style="display:flex;flex-direction:column;gap:12px;padding:17px 17px 15px;color:var(--text)">' +
-        '<span style="' + l.badge + '">' + l.inner + '</span>' +
-        '<span style="display:flex;flex-direction:column;gap:3px;min-width:0">' +
-          '<span style="font-size:16px;font-weight:600;letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.name) + '</span>' +
-          '<span style="font-size:12.5px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.host) + '</span>' +
+    return '<div class="card" draggable="true" data-id="' + esc(l.id) + '" style="' + l.cardOuterStyle + '">' +
+      '<a class="link-btn" draggable="false" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" style="' + l.cardAnchorStyle + '">' +
+        slot(l.raw, l.cardLogoWrapStyle, true) +
+        '<span style="' + l.cardTextWrapStyle + '">' +
+          '<span style="' + l.nameStyle + '">' + esc(l.name) + '</span>' +
+          '<span style="' + l.hostStyle + '">' + esc(l.host) + '</span>' +
         '</span>' +
       '</a>' +
-      '<div style="position:absolute;top:11px;right:11px;display:flex;gap:4px">' +
-        '<button data-act="fav" data-id="' + esc(l.id) + '" title="Pin" style="' + l.favS + '">★</button>' +
-        '<button class="edit-btn" data-act="edit" data-id="' + esc(l.id) + '" title="Edit" style="width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:var(--text-dim);font-size:12px;cursor:pointer;opacity:.55">✎</button>' +
-      '</div>' +
+      actionsHTML(l, 'position:absolute;top:11px;right:11px;display:flex;gap:4px') +
     '</div>';
   }
 
+  // Compact row: small square logo, name, right-aligned host.
   function compactRowHTML(l) {
     return '<div class="compact-row" draggable="true" data-id="' + esc(l.id) + '" style="display:flex;align-items:center;border-radius:12px">' +
       '<a class="link-btn" draggable="false" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" style="flex:1;display:flex;align-items:center;gap:12px;padding:10px 8px 10px 10px;min-width:0;color:var(--text)">' +
-        '<span style="' + l.dot + '"></span>' +
-        '<span style="font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.name) + '</span>' +
-        '<span style="margin-left:auto;font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44%">' + esc(l.host) + '</span>' +
+        slot(l.raw, l.rowLogoWrapStyle, false) +
+        '<span style="' + l.nameStyle + '">' + esc(l.name) + '</span>' +
+        '<span style="' + l.hostInlineStyle + '">' + esc(l.host) + '</span>' +
       '</a>' +
-      '<div style="display:flex;gap:2px;padding-right:8px">' +
-        '<button data-act="fav" data-id="' + esc(l.id) + '" title="Pin" style="' + l.favS + '">★</button>' +
-        '<button class="edit-btn" data-act="edit" data-id="' + esc(l.id) + '" title="Edit" style="width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:var(--text-dim);font-size:12px;cursor:pointer;opacity:.55">✎</button>' +
-      '</div>' +
+      actionsHTML(l, 'display:flex;gap:2px;padding-right:8px') +
     '</div>';
   }
 
-  function sectionLabel(text, color) {
-    return '<h2 style="margin:0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:14px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:' + color + '">' + esc(text) + '</h2>';
-  }
-
-  // Group header with an editable colour swatch. `--gc` is set on the parent
-  // <section>; heading / rule / count all read var(--gc).
   function colorSwatch(name) {
     return '<input type="color" data-gc="' + esc(name) + '" value="' + esc(gcFor(name)) + '" title="Change ' + esc(name) + ' colour" class="gc-swatch" style="width:20px;height:20px;flex:none;padding:0;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer">';
   }
   function groupHeader(g, fontSize, collapsed) {
     return '<div style="display:flex;align-items:center;gap:8px">' +
       '<button data-act="collapse" data-group="' + esc(g.name) + '" class="chev" title="' + (collapsed ? 'Expand' : 'Collapse') + '" style="width:22px;height:22px;flex:none;display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:var(--gc);font-size:11px;cursor:pointer;transition:transform .15s ease;transform:rotate(' + (collapsed ? '-90deg' : '0deg') + ')">▼</button>' +
-      '<h2 style="margin:0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:' + fontSize + ';font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--gc);cursor:pointer" data-act="collapse" data-group="' + esc(g.name) + '">' + esc(g.name) + '</h2>' +
+      '<h2 data-act="collapse" data-group="' + esc(g.name) + '" style="margin:0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:' + fontSize + ';font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--gc);cursor:pointer">' + esc(g.name) + '</h2>' +
       '<span style="flex:1;height:1px;background:var(--gc);opacity:.35"></span>' +
       '<span style="font-size:12px;font-weight:600;color:var(--gc)">' + g.count + '</span>' +
       colorSwatch(g.name) +
@@ -419,36 +456,32 @@
   }
 
   function renderContent() {
-    var v = view();
+    var v = view(), s = sz();
     var hintEl = document.getElementById('hint');
     if (hintEl) {
-      hintEl.textContent = v.q
-        ? (v.visible.length + ' match' + (v.visible.length === 1 ? '' : 'es'))
-        : 'Web search ↵';
+      hintEl.textContent = v.q ? (v.visible.length + ' match' + (v.visible.length === 1 ? '' : 'es')) : 'Web search ↵';
     }
 
     var html = '';
 
-    // Pinned (hidden when query active or none pinned)
     if (!v.q && v.favourites.length) {
       html += '<section style="display:flex;flex-direction:column;gap:14px">' +
-        '<div style="display:flex;align-items:baseline;gap:10px">' + sectionLabel('Pinned', 'var(--text-dim)') +
+        '<div style="display:flex;align-items:baseline;gap:10px">' +
+          '<h2 style="margin:0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:14px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim)">Pinned</h2>' +
           '<span style="font-size:13px;color:var(--text-dim)">Your most-used tools</span></div>' +
-        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(206px,1fr));gap:14px">' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(' + Math.max(s.grid - 24, 150) + 'px,1fr));gap:' + s.gap + 'px">' +
           v.favourites.map(tileHTML).join('') + '</div></section>';
     }
 
-    // Recent (hidden when query active or none)
     if (!v.q && v.recents.length) {
       html += '<section style="display:flex;flex-wrap:wrap;align-items:center;gap:9px">' +
         '<h2 style="margin:0 6px 0 0;font-family:\'Barlow Condensed\',Barlow,sans-serif;font-size:14px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim)">Recent</h2>' +
         v.recents.map(function (l) {
           return '<a class="recent-chip link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" data-open="' + esc(l.id) + '" style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:7px 14px 7px 9px;font-size:13px;font-weight:600;color:var(--text)">' +
-            '<span style="' + l.dot + '"></span>' + esc(l.name) + '</a>';
+            '<span style="' + l.dotStyle + '"></span>' + esc(l.name) + '</a>';
         }).join('') + '</section>';
     }
 
-    // Empty state
     if (state.links.length > 0 && v.visible.length === 0) {
       html += '<div style="text-align:center;padding:70px 20px;border:1px dashed var(--line-strong);border-radius:20px;color:var(--text-dim)">' +
         '<div style="font-size:17px;font-weight:600;color:var(--text);margin-bottom:6px">Nothing matches “' + esc(state.query) + '”</div>' +
@@ -460,7 +493,7 @@
           return '<section style="display:flex;flex-direction:column;gap:14px;--gc:' + gcFor(g.name) + '">' +
             groupHeader(g, '14px', collapsed) +
             (collapsed ? '' :
-              '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px">' +
+              '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(' + s.grid + 'px,1fr));gap:' + s.gap + 'px">' +
               g.links.map(cardHTML).join('') + '</div>') + '</section>';
         }).join('') + '</div>';
     } else {
@@ -469,8 +502,7 @@
           var collapsed = !!state.collapsed[g.name];
           return '<section style="background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:6px 6px ' + (collapsed ? '6px' : '8px') + ';--gc:' + gcFor(g.name) + '">' +
             '<div style="padding:13px 14px 11px">' + groupHeader(g, '13.5px', collapsed) + '</div>' +
-            (collapsed ? '' :
-              '<div style="display:flex;flex-direction:column">' + g.links.map(compactRowHTML).join('') + '</div>') + '</section>';
+            (collapsed ? '' : '<div style="display:flex;flex-direction:column">' + g.links.map(compactRowHTML).join('') + '</div>') + '</section>';
         }).join('') + '</div>';
     }
 
@@ -483,22 +515,21 @@
     state.modalOpen = true;
     state.editId = editId || null;
     var v = view();
-    var draft = { name: '', url: '', group: v.groupNames[0] || 'Operations', icon: '', color: '' };
+    var draft = { name:'', url:'', group:v.groupNames[0] || 'Operations', logo:'', icon:'', color:'' };
     if (editId) {
       var l = findLink(editId);
-      if (l) draft = { name: l.name, url: l.url, group: l.group, icon: l.icon || '', color: l.color || '' };
+      if (l) draft = { name:l.name, url:l.url, group:l.group, logo:l.logo || '', icon:l.icon || '', color:l.color || '' };
     }
     var autoColor = !draft.color;
     var colorVal = draft.color || gcFor(draft.group);
 
     var suggestions = [];
     state.links.forEach(function (l) { if (suggestions.indexOf(l.group) < 0) suggestions.push(l.group); });
-    var iconKeys = ['google', 'gmail', 'drive', 'docs', 'microsoft', 'onedrive', 'outlook', 'amazon', 'xero', 'wix', 'dropbox', 'postoffice', 'globe'];
+    var iconKeys = ['google','gmail','drive','docs','microsoft','onedrive','outlook','amazon','xero','wix','dropbox','postoffice','globe'];
 
-    var m = document.getElementById('modal');
-    m.innerHTML =
-      '<div id="overlay" style="position:fixed;inset:0;background:rgba(12,19,48,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px;z-index:50">' +
-        '<div id="dialog" style="width:100%;max-width:440px;background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow-lift);padding:24px">' +
+    document.getElementById('modal').innerHTML =
+      '<div id="overlay" style="position:fixed;inset:0;background:rgba(12,19,48,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px;z-index:50;overflow:auto">' +
+        '<div id="dialog" style="width:100%;max-width:440px;background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow-lift);padding:24px;margin:auto">' +
           '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">' +
             '<h3 style="margin:0;font-size:19px;font-weight:700">' + (editId ? 'Edit link' : 'Add a link') + '</h3>' +
             '<span style="flex:1"></span>' +
@@ -509,7 +540,8 @@
             field('URL', 'd-url', draft.url, 'https://…') +
             field('Group', 'd-group', draft.group, 'Operations', 'qos-groups') +
             '<datalist id="qos-groups">' + suggestions.map(function (s) { return '<option value="' + esc(s) + '">'; }).join('') + '</datalist>' +
-            field('Icon', 'd-icon', draft.icon, 'Auto · or google, gmail, emoji, image URL', 'qos-icons') +
+            field('Logo image URL', 'd-logo', draft.logo, 'https://…/logo.png — blank uses the icon below') +
+            field('Icon', 'd-icon', draft.icon, 'Auto · or google, gmail, emoji…', 'qos-icons') +
             '<datalist id="qos-icons">' + iconKeys.map(function (s) { return '<option value="' + esc(s) + '">'; }).join('') + '</datalist>' +
             '<div style="display:flex;flex-direction:column;gap:6px">' +
               '<span style="font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim)">Colour</span>' +
@@ -539,8 +571,7 @@
   }
 
   function closeModal() {
-    state.modalOpen = false;
-    state.editId = null;
+    state.modalOpen = false; state.editId = null;
     document.getElementById('modal').innerHTML = '';
   }
 
@@ -548,6 +579,7 @@
     var name = (document.getElementById('d-name').value || '').trim();
     var url = (document.getElementById('d-url').value || '').trim();
     var group = (document.getElementById('d-group').value || '').trim() || 'Other';
+    var logo = (document.getElementById('d-logo').value || '').trim();
     var icon = (document.getElementById('d-icon').value || '').trim();
     var auto = document.getElementById('d-color-auto').checked;
     var color = auto ? '' : (document.getElementById('d-color').value || '');
@@ -558,49 +590,58 @@
       var l = findLink(state.editId);
       if (l) {
         l.name = name; l.url = url; l.group = group;
+        if (logo) l.logo = logo; else delete l.logo;
         if (icon) l.icon = icon; else delete l.icon;
         if (color) l.color = color; else delete l.color;
       }
     } else {
-      var link = { id: 'l' + Date.now(), name: name, url: url, group: group, fav: false };
+      var link = { id:'l' + Date.now(), name:name, url:url, group:group, fav:false };
+      if (logo) link.logo = logo;
       if (icon) link.icon = icon;
       if (color) link.color = color;
       state.links.push(link);
     }
-    persist();
-    closeModal();
-    renderContent();
+    persist(); closeModal(); renderContent();
   }
 
   function deleteLink() {
     var id = state.editId;
     state.links = state.links.filter(function (l) { return l.id !== id; });
     state.recents = state.recents.filter(function (r) { return r !== id; });
-    persist();
-    closeModal();
-    renderContent();
+    persist(); closeModal(); renderContent();
   }
 
   // ================= EVENTS =================
 
   function onSearchKey(e) {
     if (e.key !== 'Enter') return;
-    var v = view();
-    var first = v.visible[0];
+    var v = view(), first = v.visible[0];
     if (first && v.q) { recordOpen(first.id); window.open(first.url, '_blank', 'noopener'); }
     else if (v.q) window.open('https://www.google.com/search?q=' + encodeURIComponent(state.query), '_blank', 'noopener');
   }
 
   function setLayout(layout) {
-    state.layout = layout;
-    persist();
-    // update tab styles + content without rebuilding search field
+    state.layout = layout; persist();
     document.querySelectorAll('.tab').forEach(function (b) {
       b.setAttribute('style', tabStyle(b.getAttribute('data-act') === layout));
     });
     renderContent();
   }
-
+  function setSize(size) {
+    if (!SIZES[size]) return;
+    state.cardSize = size; persist();
+    document.querySelectorAll('.sizetab').forEach(function (b) {
+      b.setAttribute('style', sizeTabStyle(b.getAttribute('data-size') === size));
+    });
+    renderContent();
+  }
+  function toggleLogoFit() {
+    state.logoFit = state.logoFit === 'contain' ? 'cover' : 'contain';
+    persist();
+    var b = document.querySelector('[data-act="logofit"]');
+    if (b) b.textContent = 'Logos: ' + state.logoFit;
+    renderContent();
+  }
   function toggleTheme() {
     state.theme = state.theme === 'dark' ? 'light' : 'dark';
     persist();
@@ -608,39 +649,34 @@
     var tb = document.querySelector('.theme-btn');
     if (tb) tb.textContent = state.theme === 'dark' ? '☀' : '☾';
   }
-
+  function toggleCollapse(name) {
+    if (state.collapsed[name]) delete state.collapsed[name]; else state.collapsed[name] = true;
+    persist(); renderContent();
+  }
   function resetAll() {
-    // Re-seed from the shared config, discarding local edits.
     fetchConfig().then(function (config) {
       var cfgLinks = (config && Array.isArray(config.links)) ? config.links : [];
-      state.links = cfgLinks.map(function (l, i) {
-        var o = { id: 'l' + i, name: l.name, url: l.url, group: l.group || 'Other', fav: !!l.fav };
-        if (l.icon) o.icon = l.icon;
-        if (l.color) o.color = l.color;
-        return o;
-      });
+      state.links = mapConfigLinks(cfgLinks);
       state.recents = [];
       state.groupColors = (config && config.groupColors) || {};
       state.collapsed = {};
       state.version = (config && config.version) || state.version;
-      persist();
-      renderContent();
+      persist(); renderContent();
     });
   }
 
-  // Global click delegation
   document.addEventListener('click', function (e) {
-    // record recent when a link anchor is clicked (do not preventDefault)
     var anchor = e.target.closest('[data-open]');
-    if (anchor) { recordOpen(anchor.getAttribute('data-open')); /* allow navigation */ }
+    if (anchor) recordOpen(anchor.getAttribute('data-open'));
 
     var btn = e.target.closest('[data-act]');
     if (!btn) return;
-    var act = btn.getAttribute('data-act');
-    var id = btn.getAttribute('data-id');
+    var act = btn.getAttribute('data-act'), id = btn.getAttribute('data-id');
 
     if (act === 'grouped') setLayout('grouped');
     else if (act === 'compact') setLayout('compact');
+    else if (act === 'size') setSize(btn.getAttribute('data-size'));
+    else if (act === 'logofit') toggleLogoFit();
     else if (act === 'theme') toggleTheme();
     else if (act === 'add') openModal(null);
     else if (act === 'reset') resetAll();
@@ -652,22 +688,12 @@
     else if (act === 'collapse') toggleCollapse(btn.getAttribute('data-group'));
   });
 
-  function toggleCollapse(name) {
-    if (state.collapsed[name]) delete state.collapsed[name];
-    else state.collapsed[name] = true;
-    persist();
-    renderContent();
-  }
-
-  // Editable tab colours: live-update the group's --gc while the picker is open,
-  // then persist. No re-render, so the native colour picker stays open.
+  // Editable group colours — live update without re-render so the picker stays open.
   document.addEventListener('input', function (e) {
     var sw = e.target.closest ? e.target.closest('input.gc-swatch') : null;
     if (!sw) return;
-    var name = sw.getAttribute('data-gc');
-    var color = sw.value;
+    var name = sw.getAttribute('data-gc'), color = sw.value;
     state.groupColors[name] = color;
-    // Update every section for this group (only one layout shows at a time, but be safe).
     document.querySelectorAll('.gc-swatch').forEach(function (el) {
       if (el.getAttribute('data-gc') !== name) return;
       var sec = el.closest('section');
@@ -676,12 +702,11 @@
     persist();
   });
 
-  // Overlay click closes modal (but not clicks inside the dialog)
   document.addEventListener('mousedown', function (e) {
     if (e.target && e.target.id === 'overlay') closeModal();
   });
 
-  // Drag & drop reorder (delegated) with visual feedback.
+  // Drag & drop reorder with visual feedback.
   function clearDropTargets() {
     document.querySelectorAll('.drop-target').forEach(function (el) { el.classList.remove('drop-target'); });
   }
@@ -701,8 +726,7 @@
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
     if (el.getAttribute('data-id') !== drag && !el.classList.contains('drop-target')) {
-      clearDropTargets();
-      el.classList.add('drop-target');
+      clearDropTargets(); el.classList.add('drop-target');
     }
   });
   document.addEventListener('drop', function (e) {
@@ -714,12 +738,10 @@
     drag = null;
   });
   document.addEventListener('dragend', function () {
-    drag = null;
-    clearDropTargets();
+    drag = null; clearDropTargets();
     document.querySelectorAll('.dragging').forEach(function (el) { el.classList.remove('dragging'); });
   });
 
-  // Esc closes modal
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && state.modalOpen) closeModal();
   });
@@ -737,12 +759,11 @@
     try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
     fetchConfig().then(function (config) {
       if (!config) {
-        // Config unreachable: fall back to whatever we have saved, else empty.
         if (saved && Array.isArray(saved.links)) {
           state.links = saved.links; state.recents = saved.recents || [];
-          state.groupColors = saved.groupColors || {};
-          state.collapsed = saved.collapsed || {};
+          state.groupColors = saved.groupColors || {}; state.collapsed = saved.collapsed || {};
           state.theme = saved.theme || state.theme; state.layout = saved.layout || state.layout;
+          state.cardSize = saved.cardSize || state.cardSize; state.logoFit = saved.logoFit || state.logoFit;
           state.version = saved.version || 0;
         }
       } else {
