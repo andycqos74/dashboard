@@ -68,6 +68,7 @@
 <body>
 <div id="root"></div>
 
+<script src="storage.js"></script>
 <script>
 (function () {
   "use strict";
@@ -184,12 +185,17 @@
   // Contents of a logo slot: real logo image → brand mark → monogram.
   function logoContent(l, big) {
     var ac = accent(l);
-    if (l.logo) {
-      return '<img class="logo-img" src="' + esc(l.logo) + '" alt="" loading="lazy" ' +
+    var src = l.logo ? Storage.url(l.logo) : null;   // resolves store: keys
+    if (src) {
+      return '<img class="logo-img" src="' + esc(src) + '" alt="" loading="lazy" ' +
         'style="object-fit:' + state.logoFit + '" ' +
         'onerror="this.parentNode.innerHTML=this.parentNode.getAttribute(\'data-fb\')">';
     }
     return fallbackMark(l, big, ac);
+  }
+  // Every stored-image key currently referenced by a link.
+  function logoKeys() {
+    return state.links.map(function (l) { return l.logo; }).filter(Boolean);
   }
   // No logo image: show the brand mark / monogram. On the small square slots the
   // badge fills the slot; on the wide card banner it sits centred on the neutral
@@ -540,7 +546,7 @@
             field('URL', 'd-url', draft.url, 'https://…') +
             field('Group', 'd-group', draft.group, 'Operations', 'qos-groups') +
             '<datalist id="qos-groups">' + suggestions.map(function (s) { return '<option value="' + esc(s) + '">'; }).join('') + '</datalist>' +
-            field('Logo image URL', 'd-logo', draft.logo, 'https://…/logo.png — blank uses the icon below') +
+            logoField(draft.logo) +
             field('Icon', 'd-icon', draft.icon, 'Auto · or google, gmail, emoji…', 'qos-icons') +
             '<datalist id="qos-icons">' + iconKeys.map(function (s) { return '<option value="' + esc(s) + '">'; }).join('') + '</datalist>' +
             '<div style="display:flex;flex-direction:column;gap:6px">' +
@@ -560,8 +566,98 @@
         '</div>' +
       '</div>';
 
+    wireLogoField();
     var nameInput = document.getElementById('d-name');
     if (nameInput) nameInput.focus();
+  }
+
+  // Re-render just the logo field, keeping the rest of the draft intact.
+  function refreshLogoField() {
+    var current = (document.getElementById('d-logo') || {}).value || '';
+    var holder = document.getElementById('d-drop');
+    if (!holder) return;
+    var wrap = holder.parentNode;
+    wrap.outerHTML = logoField(current);
+    wireLogoField();
+  }
+
+  function wireLogoField() {
+    var drop = document.getElementById('d-drop');
+    var picker = document.getElementById('d-file');
+    var urlInput = document.getElementById('d-logo');
+    if (!drop || !picker) return;
+
+    if (Storage.uploadsEnabled()) {
+      drop.addEventListener('click', function (e) {
+        if (e.target.closest('[data-act="logo-clear"]')) return;
+        picker.click();
+      });
+      picker.addEventListener('change', function () {
+        if (picker.files && picker.files[0]) acceptLogoFile(picker.files[0], refreshLogoField);
+      });
+      ['dragenter', 'dragover'].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) {
+          if (!hasFiles(e)) return;
+          e.preventDefault(); e.stopPropagation();
+          drop.style.borderColor = 'var(--navy)';
+        });
+      });
+      ['dragleave', 'drop'].forEach(function (ev) {
+        drop.addEventListener(ev, function () { drop.style.borderColor = 'var(--line-strong)'; });
+      });
+      drop.addEventListener('drop', function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault(); e.stopPropagation();
+        acceptLogoFile(e.dataTransfer.files[0], refreshLogoField);
+      });
+    }
+    if (urlInput) urlInput.addEventListener('change', refreshLogoField);
+  }
+
+  function hasFiles(e) {
+    var dt = e.dataTransfer;
+    if (!dt) return false;
+    if (dt.files && dt.files.length) return true;
+    return dt.types && Array.prototype.indexOf.call(dt.types, 'Files') >= 0;
+  }
+
+  // Logo field: a drop zone that doubles as a preview. Drag an image in, click
+  // to pick one, or paste a URL — mirroring the design's image slot.
+  function logoField(logo) {
+    var src = logo ? Storage.url(logo) : null;
+    var enabled = Storage.uploadsEnabled();
+    return '<div style="display:flex;flex-direction:column;gap:6px">' +
+      '<span style="font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim)">Logo</span>' +
+      '<div id="d-drop" style="display:flex;align-items:center;gap:13px;border:1px dashed var(--line-strong);background:var(--surface2);border-radius:11px;padding:11px 13px;' + (enabled ? 'cursor:pointer' : '') + '">' +
+        '<span id="d-preview" style="display:flex;align-items:center;justify-content:center;width:46px;height:46px;flex:none;border-radius:9px;overflow:hidden;background:var(--surface);border:1px solid var(--line)">' +
+          (src ? '<img class="logo-img" src="' + esc(src) + '" alt="" style="object-fit:contain">'
+               : '<span style="font-size:18px;color:var(--text-dim)">🖼</span>') + '</span>' +
+        '<span style="display:flex;flex-direction:column;gap:2px;min-width:0">' +
+          '<span id="d-logo-label" style="font-size:14px;font-weight:600;color:var(--text)">' +
+            (logo ? 'Logo set' : (enabled ? 'Drop an image, or click to choose' : 'Paste an image URL below')) + '</span>' +
+          '<span id="d-logo-note" style="font-size:12px;color:var(--text-dim)">' +
+            (enabled ? 'PNG, SVG or JPG · stored in ' + esc(Storage.driverName()) : 'Uploads are disabled') + '</span>' +
+        '</span>' +
+        (logo ? '<button type="button" data-act="logo-clear" style="margin-left:auto;flex:none;height:30px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--text-dim);font-size:13px;font-weight:600;cursor:pointer">Remove</button>' : '') +
+      '</div>' +
+      '<input type="file" id="d-file" accept="image/*" style="display:none">' +
+      '<input id="d-logo" value="' + esc(logo || '') + '" placeholder="…or paste an image URL" style="border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:11px;padding:9px 13px;font-size:13.5px;font-weight:500;outline:none">' +
+    '</div>';
+  }
+
+  // Take a File from a picker/drop, store it, and point the draft at it.
+  function acceptLogoFile(file, onDone) {
+    var label = document.getElementById('d-logo-label');
+    var note = document.getElementById('d-logo-note');
+    if (label) label.textContent = 'Uploading…';
+    Storage.put(file).then(function (key) {
+      var input = document.getElementById('d-logo');
+      if (input) input.value = key;
+      if (onDone) onDone(key);
+    }).catch(function (err) {
+      if (label) label.textContent = 'Upload failed';
+      if (note) { note.textContent = err.message || String(err); note.style.color = '#C2415A'; }
+    });
   }
 
   function field(label, id, value, placeholder, list) {
@@ -686,6 +782,12 @@
     else if (act === 'save') saveLink();
     else if (act === 'delete') deleteLink();
     else if (act === 'collapse') toggleCollapse(btn.getAttribute('data-group'));
+    else if (act === 'logo-clear') {
+      e.preventDefault(); e.stopPropagation();
+      var input = document.getElementById('d-logo');
+      if (input) input.value = '';
+      refreshLogoField();
+    }
   });
 
   // Editable group colours — live update without re-render so the picker stays open.
@@ -724,8 +826,9 @@
     var el = e.target.closest('[data-id]');
     if (!el) return;
     e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    if (el.getAttribute('data-id') !== drag && !el.classList.contains('drop-target')) {
+    var files = hasFiles(e);
+    if (e.dataTransfer) e.dataTransfer.dropEffect = files ? 'copy' : 'move';
+    if ((files || el.getAttribute('data-id') !== drag) && !el.classList.contains('drop-target')) {
       clearDropTargets(); el.classList.add('drop-target');
     }
   });
@@ -734,9 +837,24 @@
     clearDropTargets();
     if (!el) return;
     e.preventDefault();
+    // An image dropped from the desktop sets that tile's logo; anything else is
+    // a tile being dragged to reorder.
+    if (hasFiles(e)) { dropLogoOnTile(el.getAttribute('data-id'), e.dataTransfer.files[0]); return; }
     move(drag, el.getAttribute('data-id'));
     drag = null;
   });
+
+  function dropLogoOnTile(id, file) {
+    var link = findLink(id);
+    if (!link || !file || !Storage.uploadsEnabled()) return;
+    Storage.put(file).then(function (key) {
+      link.logo = key;
+      persist();
+      return Storage.hydrate([key]);
+    }).then(renderContent).catch(function (err) {
+      console.error('Logo upload failed:', err);
+    });
+  }
   document.addEventListener('dragend', function () {
     drag = null; clearDropTargets();
     document.querySelectorAll('.dragging').forEach(function (el) { el.classList.remove('dragging'); });
@@ -753,11 +871,19 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .catch(function () { return null; });
   }
+  function fetchStorageConfig() {
+    return fetch('config/storage.json', { cache: 'no-cache' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; });
+  }
 
   function boot() {
     var saved = null;
     try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
-    fetchConfig().then(function (config) {
+    Promise.all([fetchConfig(), fetchStorageConfig()]).then(function (r) {
+      var config = r[0];
+      return Storage.init(r[1]).then(function () { return config; });
+    }).then(function (config) {
       if (!config) {
         if (saved && Array.isArray(saved.links)) {
           state.links = saved.links; state.recents = saved.recents || [];
@@ -769,7 +895,9 @@
       } else {
         seedFrom(config, saved);
       }
-      shell();
+      // Resolve any stored-image keys before the first paint so logos appear
+      // immediately rather than popping in.
+      return Storage.hydrate(logoKeys()).then(shell, shell);
     });
   }
 
