@@ -350,7 +350,10 @@ function hintFor(message) {
     return 'The certificate is not trusted. If that is expected on your network, set CS_INSECURE_TLS=1 on this service.';
   }
   if (/ENOTFOUND|EAI_AGAIN/i.test(m)) {
-    return `The hostname in CS_BASE_URL does not resolve from inside this container. If it is an internal name, check the container's DNS; if it is a public name pointing back at this host, try the LAN address or add an extra_hosts entry.`;
+    if (/combinedstorage/i.test(String(BASE))) {
+      return 'That container name does not resolve, so this service is probably not on Combined Storage\'s Docker network. Check the network name with `docker network ls` (the stack expects cloudflared-combinedstorage_default; override with CS_NETWORK) and confirm Combined Storage\'s container is actually named "combinedstorage".';
+    }
+    return 'The hostname in CS_BASE_URL does not resolve from inside this container. If it is an internal name, check the container\'s DNS; if it is a public name pointing back at this host, try the LAN address or add an extra_hosts entry.';
   }
   if (/ECONNREFUSED/i.test(m)) {
     return 'Nothing is listening on that host/port from inside this container. Check CS_BASE_URL (including the port) and that Combined Storage is reachable from this Docker network.';

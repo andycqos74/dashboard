@@ -10,12 +10,15 @@
 # Environment variables (set in Portainer's "Environment variables" panel):
 #   DASHBOARD_PORT   host port to publish (default 1919)
 #   CS_BASE_URL      How the UPLOADER reaches Combined Storage from inside Docker.
-#                    If it runs on this same Docker host, use the internal
-#                    address - http://host.docker.internal:4000 - not the public
-#                    hostname. A public name behind a Cloudflare Tunnel is served
-#                    on 443, so ...:4000 will simply time out from a container.
-#                    This does not change the logo URLs staff see: Combined
+#                    Defaults to http://combinedstorage:4000 over the shared
+#                    network below, so it usually needs no value at all. Do NOT
+#                    use the public hostname with the app port: that name is
+#                    served by the tunnel on 443, so ...:4000 times out from a
+#                    container. Logo URLs staff see are unaffected - Combined
 #                    Storage builds those from its own PUBLIC_BASE_URL.
+#   CS_NETWORK       Combined Storage's existing Docker network. Defaults to
+#                    cloudflared-combinedstorage_default; confirm with
+#                    `docker network ls` and override if yours differs.
 #   CS_USERNAME      Combined Storage admin username
 #   CS_PASSWORD      Combined Storage admin password
 #   CS_PARENT_ID     folder to upload logos into (default "root")
@@ -54,16 +57,30 @@ services:
     image: qos-dashboard-uploader:latest
     container_name: qos-dashboard-uploader
     restart: unless-stopped
-    # Lets the uploader reach ports published on the Docker host, so when
-    # Combined Storage runs on this same host you can set
-    #   CS_BASE_URL=http://host.docker.internal:4000
-    # and skip the public hostname (and its tunnel) entirely.
+    # Fallback route to ports published on the Docker host, if you ever switch
+    # CS_BASE_URL to http://host.docker.internal:4000.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      # "default" is this stack's own network — the uploader MUST stay on it or
+      # nginx in the dashboard container cannot reach it. Declaring `networks:`
+      # replaces the default membership rather than adding to it.
+      - default
+      # Combined Storage's network, so it answers as combinedstorage:4000.
+      - combinedstorage
     environment:
-      CS_BASE_URL: "${CS_BASE_URL:-}"
+      CS_BASE_URL: "${CS_BASE_URL:-http://combinedstorage:4000}"
       CS_USERNAME: "${CS_USERNAME:-}"
       CS_PASSWORD: "${CS_PASSWORD:-}"
       CS_PARENT_ID: "${CS_PARENT_ID:-root}"
       MAX_UPLOAD_BYTES: "${MAX_UPLOAD_BYTES:-8388608}"
       CS_INSECURE_TLS: "${CS_INSECURE_TLS:-0}"
+
+networks:
+  # Combined Storage's existing network, created by its own stack, so the
+  # uploader can resolve the container by name. It must already exist - check
+  # the exact name with `docker network ls` and set CS_NETWORK if it differs.
+  # Deploying will fail with "network not found" if this name is wrong.
+  combinedstorage:
+    name: ${CS_NETWORK:-cloudflared-combinedstorage_default}
+    external: true

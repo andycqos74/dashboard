@@ -71,21 +71,34 @@ Set these in Portainer's **Environment variables** panel:
 Leave them unset to run without uploads — the dashboard serves normally and
 `/upload` returns a clear "not configured" error.
 
-### Pointing CS_BASE_URL at Combined Storage on the same host
+### How the uploader reaches Combined Storage
 
-If the public hostname is served by a **Cloudflare Tunnel** (or any reverse
-proxy), that name answers on **443 only** — the app's own port is not open on
-it. `https://cdn.example.com:4000` therefore times out from inside a container,
-even though the same URL may look fine in a browser on your desk.
+The stack **joins Combined Storage's own Docker network** and talks to it by
+container name — `http://combinedstorage:4000`, the default, so `CS_BASE_URL`
+usually needs no value at all. That's plain HTTP inside the host: no tunnel, no
+TLS (`CS_INSECURE_TLS` is irrelevant), and no dependence on published ports.
 
-When both run on one Docker host, reach it internally instead:
+It requires that network to exist. Confirm the name:
 
-| Setting | When to use |
-| --- | --- |
-| `CS_BASE_URL=http://host.docker.internal:4000` | Combined Storage publishes port 4000 on the host (its default). Works with the stack as shipped — `extra_hosts` maps that name to the host gateway. |
-| `CS_BASE_URL=http://combinedstorage:4000` | You also attach the uploader to Combined Storage's Docker network. Most robust: no reliance on published ports. Uncomment the `networks:` blocks in `docker-compose.yml`. |
+```sh
+docker network ls
+```
 
-Both talk plain HTTP inside the host, so `CS_INSECURE_TLS` becomes irrelevant.
+The stack expects `cloudflared-combinedstorage_default` (the network Combined
+Storage joins in its own compose file). If yours differs, set **`CS_NETWORK`**.
+A wrong name makes the stack fail to deploy with *"network … not found"*, and a
+right network with a differently-named container shows up as `ENOTFOUND
+combinedstorage` in the uploader log.
+
+> **Don't use the public hostname with the app's port.** If `cdn.example.com` is
+> served by a **Cloudflare Tunnel** (or any reverse proxy) it answers on **443
+> only** — nothing listens on 4000 there — so `https://cdn.example.com:4000`
+> times out from inside a container, even though the site loads fine in your
+> browser. The uploader warns about this combination at startup.
+
+If you'd rather not share a network, `CS_BASE_URL=http://host.docker.internal:4000`
+also works, since Combined Storage publishes 4000 on the host and the stack maps
+that name to the host gateway.
 
 **The public logo URLs are unaffected.** Combined Storage builds `/f/<token>`
 links from its own `PUBLIC_BASE_URL`, not from the address the uploader used —

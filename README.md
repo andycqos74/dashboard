@@ -121,26 +121,26 @@ Set these on the stack (Portainer → Environment variables, or a `.env` beside
 `docker-compose.yml`):
 
 ```
-CS_BASE_URL=http://host.docker.internal:4000   # how the UPLOADER reaches it
 CS_USERNAME=admin
 CS_PASSWORD=…
-CS_PARENT_ID=root                              # folder id to upload into
-CS_INSECURE_TLS=0                              # 1 only for a self-signed cert on a trusted LAN
+CS_PARENT_ID=root      # folder id to upload into
+CS_NETWORK=…           # only if Combined Storage's Docker network is named differently
 ```
 
-**`CS_BASE_URL` is an internal address, not the public one.** If Combined
-Storage runs on the same Docker host, point at it directly:
+The uploader **joins Combined Storage's own Docker network** and reaches it by
+container name, so `CS_BASE_URL` defaults to `http://combinedstorage:4000` and
+normally needs no value. That network must already exist — check the name with
+`docker network ls` (the stack expects `cloudflared-combinedstorage_default`)
+and set `CS_NETWORK` if yours differs.
 
-- `http://host.docker.internal:4000` — works out of the box; the stack maps that
-  name to the host.
-- `http://combinedstorage:4000` — if you also put the uploader on Combined
-  Storage's Docker network (see the commented `networks:` block in
-  `docker-compose.yml`).
+> **`CS_BASE_URL` is an internal address, never the public one.** If
+> `cdn.example.com` is served by a Cloudflare Tunnel or reverse proxy it answers
+> on 443 only, so `https://cdn.example.com:4000` times out from inside a
+> container even though it loads fine in your browser. The uploader warns about
+> that combination at startup.
 
-Do **not** use the public hostname with the app's port (e.g.
-`https://cdn.example.com:4000`). A public name behind a Cloudflare Tunnel or
-reverse proxy is served on 443, so nothing answers on 4000 and the uploader just
-times out.
+Not sharing a network? `CS_BASE_URL=http://host.docker.internal:4000` works too,
+since the stack maps that name to the Docker host.
 
 This does not change what staff see: Combined Storage builds the `/f/<token>`
 links from its own `PUBLIC_BASE_URL`, so uploading over the internal address
