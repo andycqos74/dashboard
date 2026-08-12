@@ -121,12 +121,30 @@ Set these on the stack (Portainer → Environment variables, or a `.env` beside
 `docker-compose.yml`):
 
 ```
-CS_BASE_URL=https://file.example.com:4000   # your Combined Storage instance
 CS_USERNAME=admin
 CS_PASSWORD=…
-CS_PARENT_ID=root                           # folder id to upload into
-CS_INSECURE_TLS=0                           # 1 only for a self-signed cert on a trusted LAN
+CS_PARENT_ID=root      # folder id to upload into
+CS_NETWORK=…           # only if Combined Storage's Docker network is named differently
 ```
+
+The uploader **joins Combined Storage's own Docker network** and reaches it by
+container name, so `CS_BASE_URL` defaults to `http://combinedstorage:4000` and
+normally needs no value. That network must already exist — check the name with
+`docker network ls` (the stack expects `cloudflared-combinedstorage_default`)
+and set `CS_NETWORK` if yours differs.
+
+> **`CS_BASE_URL` is an internal address, never the public one.** If
+> `cdn.example.com` is served by a Cloudflare Tunnel or reverse proxy it answers
+> on 443 only, so `https://cdn.example.com:4000` times out from inside a
+> container even though it loads fine in your browser. The uploader warns about
+> that combination at startup.
+
+Not sharing a network? `CS_BASE_URL=http://host.docker.internal:4000` works too,
+since the stack maps that name to the Docker host.
+
+This does not change what staff see: Combined Storage builds the `/f/<token>`
+links from its own `PUBLIC_BASE_URL`, so uploading over the internal address
+still returns the public URL.
 
 Leave them unset and the dashboard still runs — `/upload` just returns a clear
 "not configured" error. Uploads are **unauthenticated by design** (matching the
