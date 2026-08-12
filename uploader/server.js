@@ -70,6 +70,20 @@ async function login() {
   cookie = set.map((c) => c.split(';')[0]).join('; ');
 }
 
+// Combined Storage rejects a second file with the same name in a folder
+// ("An item with that name already exists here."), and logo filenames repeat
+// constantly — two tiles both uploading "logo.png", or the same image twice.
+// The stored name is irrelevant to us (tiles reference the returned URL), so
+// make every upload unique and keep the extension for a sensible mime type.
+function uniqueName(original) {
+  const safe = String(original || 'logo.png').replace(/[/\\]/g, '_').slice(-120);
+  const dot = safe.lastIndexOf('.');
+  const stem = (dot > 0 ? safe.slice(0, dot) : safe).slice(0, 48) || 'logo';
+  const ext = dot > 0 ? safe.slice(dot) : '.png';
+  const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  return `${stem}-${stamp}${ext}`;
+}
+
 async function uploadOnce(name, type, buf) {
   return request(
     `${BASE}/api/files/${encodeURIComponent(PARENT)}/upload?name=${encodeURIComponent(name)}`,
@@ -102,6 +116,106 @@ async function upload(name, type, buf) {
   return dto.url;
 }
 
+// ---- grab a representative image from a website -----------------------------
+// Fetches the page and picks the best image it advertises about itself:
+// og:image (the sharing preview, usually a real banner) > apple-touch-icon >
+// favicon. Deliberately no headless browser: a full page render would add
+// ~400MB of Chromium to this image and, for the login-gated tools on this
+// dashboard, would only ever screenshot a login form.
+function fetchBinary(urlStr, depth) {
+  if ((depth || 0) > 4) return Promise.reject(new Error('Too many redirects'));
+  return new Promise((resolve, reject) => {
+    let u;
+    try { u = new URL(urlStr); } catch (_) { return reject(new Error('Invalid URL')); }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return reject(new Error('Only http(s) URLs are supported'));
+    const req = agentFor(u).request(u, {
+      method: 'GET',
+      rejectUnauthorized: !INSECURE,
+      headers: { 'User-Agent': 'QoS-Dashboard-LogoGrabber/1.0', Accept: '*/*' },
+    }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        return resolve(fetchBinary(new URL(res.headers.location, u).toString(), (depth || 0) + 1));
+      }
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error(`Site returned ${res.statusCode}`)); }
+      const chunks = []; let total = 0;
+      res.on('data', (c) => {
+        total += c.length;
+        if (total > MAX_BYTES) { req.destroy(); return reject(new Error('Remote image is too large')); }
+        chunks.push(c);
+      });
+      res.on('end', () => resolve({
+        buf: Buffer.concat(chunks),
+        type: String(res.headers['content-type'] || '').split(';')[0].trim(),
+        finalUrl: u.toString(),
+      }));
+    });
+    req.on('error', (e) => reject(new Error(e.message)));
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Site timed out')); });
+    req.end();
+  });
+}
+
+function pickImageFromHtml(html, pageUrl) {
+  const head = html.slice(0, 200000);
+  const candidates = [];
+  const push = (v, rank) => { if (v) candidates.push({ v, rank }); };
+  const meta = /<meta[^>]+>/gi;
+  let m;
+  while ((m = meta.exec(head))) {
+    const tag = m[0];
+    const prop = (/(?:property|name)\s*=\s*["']([^"']+)["']/i.exec(tag) || [])[1];
+    const content = (/content\s*=\s*["']([^"']+)["']/i.exec(tag) || [])[1];
+    if (!prop || !content) continue;
+    const p = prop.toLowerCase();
+    if (p === 'og:image' || p === 'og:image:url') push(content, 0);
+    else if (p === 'twitter:image' || p === 'twitter:image:src') push(content, 1);
+  }
+  const link = /<link[^>]+>/gi;
+  while ((m = link.exec(head))) {
+    const tag = m[0];
+    const rel = ((/rel\s*=\s*["']([^"']+)["']/i.exec(tag) || [])[1] || '').toLowerCase();
+    const href = (/href\s*=\s*["']([^"']+)["']/i.exec(tag) || [])[1];
+    if (!href) continue;
+    if (rel.includes('apple-touch-icon')) push(href, 2);
+    else if (rel.split(/\s+/).includes('icon') || rel.includes('shortcut icon')) push(href, 3);
+  }
+  candidates.sort((a, b) => a.rank - b.rank);
+  const out = [];
+  for (const c of candidates) {
+    try { out.push(new URL(c.v, pageUrl).toString()); } catch (_) {}
+  }
+  try { out.push(new URL('/favicon.ico', pageUrl).toString()); } catch (_) {}
+  return out.filter((v, i, a) => a.indexOf(v) === i);
+}
+
+async function grabSiteImage(pageUrl) {
+  const page = await fetchBinary(pageUrl);
+  // The URL might point straight at an image already.
+  if (/^image\//.test(page.type)) return { buf: page.buf, type: page.type, from: page.finalUrl };
+  const html = page.buf.toString('utf8');
+  const candidates = pickImageFromHtml(html, page.finalUrl);
+  if (!candidates.length) throw new Error('That page advertises no logo or preview image');
+  let lastErr = null;
+  for (const c of candidates) {
+    try {
+      const img = await fetchBinary(c);
+      if (/^image\//.test(img.type) && img.buf.length) return { buf: img.buf, type: img.type, from: c };
+      lastErr = new Error('Not an image');
+    } catch (e) { lastErr = e; }
+  }
+  throw new Error(`Could not fetch an image from that site${lastErr ? ` (${lastErr.message})` : ''}`);
+}
+
+function extFor(mime) {
+  const map = {
+    'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp',
+    'image/gif': '.gif', 'image/svg+xml': '.svg',
+    'image/x-icon': '.ico', 'image/vnd.microsoft.icon': '.ico',
+  };
+  return map[String(mime).toLowerCase()] || '.png';
+}
+
 function humanSize(bytes) {
   return bytes >= 1024 * 1024
     ? `${Math.round((bytes / 1024 / 1024) * 10) / 10}MB`
@@ -121,14 +235,43 @@ function send(res, status, obj) {
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://localhost');
 
+  // /health           liveness only
+  // /health?probe=1   actually log in to Combined Storage and report why not,
+  //                   so a 502 on upload can be diagnosed without guesswork.
   if (req.method === 'GET' && u.pathname === '/health') {
-    return send(res, 200, { ok: true, configured: Boolean(BASE && USER && PASS) });
+    const configured = Boolean(BASE && USER && PASS);
+    if (!u.searchParams.get('probe')) return send(res, 200, { ok: true, configured });
+    if (!configured) {
+      return send(res, 200, {
+        ok: true, configured: false, reachable: false,
+        detail: 'Set CS_BASE_URL, CS_USERNAME and CS_PASSWORD on the uploader service.',
+      });
+    }
+    return login().then(
+      () => send(res, 200, { ok: true, configured: true, reachable: true, base: BASE, folder: PARENT }),
+      (err) => send(res, 200, { ok: true, configured: true, reachable: false, base: BASE, detail: err.message }),
+    );
   }
-  if (req.method !== 'POST' || u.pathname !== '/upload') {
-    return send(res, 404, { error: 'Not found' });
-  }
+  const isUpload = req.method === 'POST' && u.pathname === '/upload';
+  const isGrab = req.method === 'POST' && u.pathname === '/grab';
+  if (!isUpload && !isGrab) return send(res, 404, { error: 'Not found' });
+
   if (!BASE || !USER || !PASS) {
     return send(res, 503, { error: 'Upload service is not configured (CS_BASE_URL/CS_USERNAME/CS_PASSWORD).' });
+  }
+
+  // Pull a logo straight off a website and store it, so nobody has to save and
+  // upload an image by hand.
+  if (isGrab) {
+    const target = u.searchParams.get('url') || '';
+    if (!target) return send(res, 400, { error: 'Missing ?url=' });
+    return grabSiteImage(target)
+      .then((img) => upload(uniqueName(`site${extFor(img.type)}`), img.type, img.buf))
+      .then((url) => send(res, 201, { url }))
+      .catch((err) => {
+        console.error('[uploader] grab:', err.message);
+        send(res, 502, { error: err.message });
+      });
   }
 
   const type = String(req.headers['content-type'] || '');
@@ -157,10 +300,8 @@ const server = http.createServer((req, res) => {
     if (aborted) return;
     const buf = Buffer.concat(chunks);
     if (!buf.length) return send(res, 400, { error: 'Empty upload.' });
-    // Keep the extension so Combined Storage stores a sensible filename.
-    const raw = (u.searchParams.get('name') || 'logo.png').replace(/[/\\]/g, '_').slice(-120);
     try {
-      const url = await upload(raw, type, buf);
+      const url = await upload(uniqueName(u.searchParams.get('name')), type, buf);
       send(res, 201, { url });
     } catch (err) {
       console.error('[uploader]', err.message);
