@@ -20,6 +20,17 @@ services:
     image: qos-dashboard-uploader
     container_name: qos-dashboard-uploader
     restart: unless-stopped
+    # Lets the uploader reach services published on the Docker host, so
+    # CS_BASE_URL can be http://host.docker.internal:4000 instead of going out
+    # to a public hostname and back. Harmless if unused.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Alternative, if Combined Storage is on this host: put the uploader on its
+    # network and use CS_BASE_URL=http://combinedstorage:4000. Uncomment both
+    # this and the networks block at the bottom of the file.
+    # networks:
+    #   - default
+    #   - combinedstorage
     environment:
       # Your Combined Storage instance and its admin login.
       CS_BASE_URL: "${CS_BASE_URL:-}"
@@ -30,3 +41,12 @@ services:
       MAX_UPLOAD_BYTES: "${MAX_UPLOAD_BYTES:-8388608}"
       # Set to 1 only for a self-signed certificate on a trusted network.
       CS_INSECURE_TLS: "${CS_INSECURE_TLS:-0}"
+
+# Uncomment together with the uploader's `networks:` block above to talk to
+# Combined Storage directly over the Docker network it already sits on.
+# The name must match the existing network (Combined Storage joins
+# cloudflared-combinedstorage_default in its own stack).
+# networks:
+#   combinedstorage:
+#     name: ${CS_NETWORK:-cloudflared-combinedstorage_default}
+#     external: true

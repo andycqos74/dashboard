@@ -9,7 +9,13 @@
 #
 # Environment variables (set in Portainer's "Environment variables" panel):
 #   DASHBOARD_PORT   host port to publish (default 1919)
-#   CS_BASE_URL      Combined Storage base URL, e.g. https://file.amcmail.co.uk:4000
+#   CS_BASE_URL      How the UPLOADER reaches Combined Storage from inside Docker.
+#                    If it runs on this same Docker host, use the internal
+#                    address - http://host.docker.internal:4000 - not the public
+#                    hostname. A public name behind a Cloudflare Tunnel is served
+#                    on 443, so ...:4000 will simply time out from a container.
+#                    This does not change the logo URLs staff see: Combined
+#                    Storage builds those from its own PUBLIC_BASE_URL.
 #   CS_USERNAME      Combined Storage admin username
 #   CS_PASSWORD      Combined Storage admin password
 #   CS_PARENT_ID     folder to upload logos into (default "root")
@@ -48,6 +54,12 @@ services:
     image: qos-dashboard-uploader:latest
     container_name: qos-dashboard-uploader
     restart: unless-stopped
+    # Lets the uploader reach ports published on the Docker host, so when
+    # Combined Storage runs on this same host you can set
+    #   CS_BASE_URL=http://host.docker.internal:4000
+    # and skip the public hostname (and its tunnel) entirely.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       CS_BASE_URL: "${CS_BASE_URL:-}"
       CS_USERNAME: "${CS_USERNAME:-}"

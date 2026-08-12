@@ -35,6 +35,26 @@ let cookie = null;
 
 function agentFor(u) { return u.protocol === 'https:' ? https : http; }
 
+// Node tries every address a hostname resolves to (IPv6 and IPv4) and, when all
+// of them fail, reports one AggregateError whose own .message is EMPTY - the
+// real causes sit in .errors. Reporting err.message alone therefore prints
+// nothing at exactly the moment you most need the reason.
+function describeError(err) {
+  if (!err) return 'unknown error';
+  if (Array.isArray(err.errors) && err.errors.length) {
+    const seen = new Set();
+    const parts = [];
+    for (const e of err.errors) {
+      const where = e.address ? `${e.address}:${e.port ?? ''}` : '';
+      const text = [e.code || e.message || String(e), where && `(${where})`].filter(Boolean).join(' ');
+      if (!seen.has(text)) { seen.add(text); parts.push(text); }
+    }
+    return `${err.code ? err.code + ': ' : ''}all addresses failed - ${parts.join('; ')}`;
+  }
+  if (err.message) return err.code && !err.message.includes(err.code) ? `${err.code}: ${err.message}` : err.message;
+  return err.code || String(err);
+}
+
 function request(urlStr, opts, body) {
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
@@ -54,6 +74,11 @@ function request(urlStr, opts, body) {
       },
     );
     req.on('error', reject);
+    // Without this a dead host leaves the request hanging indefinitely, so the
+    // browser sits waiting instead of getting a clear failure.
+    req.setTimeout(20000, () => {
+      req.destroy(Object.assign(new Error('timed out after 20s'), { code: 'ETIMEDOUT' }));
+    });
     if (body) req.write(body);
     req.end();
   });
@@ -252,7 +277,7 @@ const server = http.createServer((req, res) => {
     }
     return login().then(
       () => send(res, 200, { ok: true, configured: true, reachable: true, base: BASE, folder: PARENT }),
-      (err) => send(res, 200, { ok: true, configured: true, reachable: false, base: BASE, detail: err.message }),
+      (err) => send(res, 200, { ok: true, configured: true, reachable: false, base: BASE, detail: describeError(err) }),
     );
   }
   const isUpload = req.method === 'POST' && u.pathname === '/upload';
@@ -272,8 +297,9 @@ const server = http.createServer((req, res) => {
       .then((img) => upload(uniqueName(`site${extFor(img.type)}`), img.type, img.buf))
       .then((url) => send(res, 201, { url }))
       .catch((err) => {
-        console.error('[uploader] grab:', err.message);
-        send(res, 502, { error: err.message });
+        const detail = describeError(err);
+        console.error('[uploader] grab failed:', detail);
+        send(res, 502, { error: detail });
       });
   }
 
@@ -307,8 +333,10 @@ const server = http.createServer((req, res) => {
       const url = await upload(uniqueName(u.searchParams.get('name')), type, buf);
       send(res, 201, { url });
     } catch (err) {
-      console.error('[uploader]', err.message);
-      send(res, 502, { error: err.message });
+      const detail = describeError(err);
+      console.error('[uploader] upload failed:', detail);
+      console.error('[uploader] ->', hintFor(detail));
+      send(res, 502, { error: detail });
     }
   });
   req.on('error', () => { if (!aborted) send(res, 400, { error: 'Upload stream failed.' }); });
@@ -327,8 +355,8 @@ function hintFor(message) {
   if (/ECONNREFUSED/i.test(m)) {
     return 'Nothing is listening on that host/port from inside this container. Check CS_BASE_URL (including the port) and that Combined Storage is reachable from this Docker network.';
   }
-  if (/ETIMEDOUT|timeout/i.test(m)) {
-    return 'The connection timed out - usually a firewall, or a public address that does not loop back from inside Docker.';
+  if (/ETIMEDOUT|timeout|EHOSTUNREACH|ENETUNREACH/i.test(m)) {
+    return 'The connection timed out. If Combined Storage runs on this same Docker host, point CS_BASE_URL at it internally (http://host.docker.internal:4000, or http://combinedstorage:4000 if this container shares its network) rather than at a public hostname.';
   }
   if (/login failed \(401\)/i.test(m)) {
     return 'Reached Combined Storage, but it rejected the login. Check CS_USERNAME and CS_PASSWORD.';
@@ -346,12 +374,30 @@ function selfTest() {
     console.error('[uploader] NOT CONFIGURED - set CS_BASE_URL, CS_USERNAME and CS_PASSWORD. Uploads will return 503.');
     return;
   }
+  // A public hostname on an app port is the classic misconfiguration: the
+  // public name is served by a tunnel/proxy on 443, so the app's own port is
+  // not open there and the connection just hangs. Say so before it times out.
+  try {
+    const u = new URL(BASE);
+    const publicName = /\./.test(u.hostname) && !/^(localhost|host\.docker\.internal)$/i.test(u.hostname)
+      && !/^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(u.hostname)
+      && !/\.(local|internal|lan)$/i.test(u.hostname);
+    if (publicName && u.port && u.port !== '80' && u.port !== '443') {
+      console.warn(`[uploader] NOTE: CS_BASE_URL uses the public hostname "${u.hostname}" with port ${u.port}.`);
+      console.warn('[uploader] If that name is served by a tunnel or reverse proxy it only listens on 443,');
+      console.warn('[uploader] so this will time out. Prefer the internal address when Combined Storage is on this host:');
+      console.warn('[uploader]   CS_BASE_URL=http://host.docker.internal:4000');
+      console.warn('[uploader] Logo URLs shown to staff are unaffected - Combined Storage builds those from PUBLIC_BASE_URL.');
+    }
+  } catch (_) { /* URL parsing problems surface in the probe below */ }
+
   console.log(`[uploader] checking Combined Storage at ${BASE} ...`);
   login().then(
     () => console.log(`[uploader] OK - signed in to Combined Storage, uploading into folder "${PARENT}". Ready.`),
     (err) => {
-      console.error(`[uploader] CANNOT REACH Combined Storage: ${err.message}`);
-      console.error(`[uploader] -> ${hintFor(err.message)}`);
+      const detail = describeError(err);
+      console.error(`[uploader] CANNOT REACH Combined Storage: ${detail}`);
+      console.error(`[uploader] -> ${hintFor(detail)}`);
       console.error('[uploader] Uploads will fail with 502 until this is resolved. Restart this container to re-check.');
     },
   );

@@ -62,7 +62,7 @@ Set these in Portainer's **Environment variables** panel:
 
 | Variable | Meaning |
 | --- | --- |
-| `CS_BASE_URL` | Combined Storage base URL, e.g. `https://file.example.com:4000` |
+| `CS_BASE_URL` | How the **uploader** reaches Combined Storage from inside Docker — an *internal* address such as `http://host.docker.internal:4000`, **not** the public hostname (see below) |
 | `CS_USERNAME` / `CS_PASSWORD` | Combined Storage admin login |
 | `CS_PARENT_ID` | folder to upload logos into (default `root`) |
 | `MAX_UPLOAD_BYTES` | upload cap in bytes (default 8388608 = 8MB) |
@@ -70,6 +70,26 @@ Set these in Portainer's **Environment variables** panel:
 
 Leave them unset to run without uploads — the dashboard serves normally and
 `/upload` returns a clear "not configured" error.
+
+### Pointing CS_BASE_URL at Combined Storage on the same host
+
+If the public hostname is served by a **Cloudflare Tunnel** (or any reverse
+proxy), that name answers on **443 only** — the app's own port is not open on
+it. `https://cdn.example.com:4000` therefore times out from inside a container,
+even though the same URL may look fine in a browser on your desk.
+
+When both run on one Docker host, reach it internally instead:
+
+| Setting | When to use |
+| --- | --- |
+| `CS_BASE_URL=http://host.docker.internal:4000` | Combined Storage publishes port 4000 on the host (its default). Works with the stack as shipped — `extra_hosts` maps that name to the host gateway. |
+| `CS_BASE_URL=http://combinedstorage:4000` | You also attach the uploader to Combined Storage's Docker network. Most robust: no reliance on published ports. Uncomment the `networks:` blocks in `docker-compose.yml`. |
+
+Both talk plain HTTP inside the host, so `CS_INSECURE_TLS` becomes irrelevant.
+
+**The public logo URLs are unaffected.** Combined Storage builds `/f/<token>`
+links from its own `PUBLIC_BASE_URL`, not from the address the uploader used —
+so staff still get `https://cdn.example.com/f/…`.
 
 The `uploader` port is deliberately **not published to the host**: only the
 dashboard container reaches it, via nginx's `/upload` location. Uploading needs
