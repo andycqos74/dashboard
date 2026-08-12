@@ -3,6 +3,7 @@ FROM nginx:1.27-alpine
 
 # Site content
 COPY index.html /usr/share/nginx/html/index.html
+COPY storage.js /usr/share/nginx/html/storage.js
 COPY assets/ /usr/share/nginx/html/assets/
 COPY config/ /usr/share/nginx/html/config/
 

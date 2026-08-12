@@ -2,13 +2,21 @@
 #
 # Recommended deploy method: Portainer → Stacks → Add stack → "Repository".
 #   Repository URL:  <this repo>
-#   Reference:       refs/heads/claude/claude-design-dashboard-e1ov1g  (or main once merged)
+#   Reference:       refs/heads/main
 #   Compose path:    portainer-stack.yml
-# Portainer clones the repo and builds the image from the Dockerfile, so the
+# Portainer clones the repo and builds the images from the Dockerfiles, so the
 # links baked in come straight from config/links.json in the repo.
 #
 # Environment variables (set in Portainer's "Environment variables" panel):
-#   DASHBOARD_PORT  host port to publish (default 8080)
+#   DASHBOARD_PORT   host port to publish (default 1919)
+#   CS_BASE_URL      Combined Storage base URL, e.g. https://file.amcmail.co.uk:4000
+#   CS_USERNAME      Combined Storage admin username
+#   CS_PASSWORD      Combined Storage admin password
+#   CS_PARENT_ID     folder to upload logos into (default "root")
+#   CS_INSECURE_TLS  set to 1 only for a self-signed cert on a trusted network
+#
+# Leave the CS_* variables unset to run without logo uploads: the dashboard
+# still serves normally and config/storage.json decides the fallback.
 
 services:
   dashboard:
@@ -29,3 +37,21 @@ services:
       timeout: 3s
       start_period: 5s
       retries: 3
+
+  # Holds the Combined Storage credentials so the browser never sees them, and
+  # exposes only POST /upload (reached at /upload via the dashboard's nginx).
+  # Deliberately not published to the host.
+  uploader:
+    build:
+      context: ./uploader
+      dockerfile: Dockerfile
+    image: qos-dashboard-uploader:latest
+    container_name: qos-dashboard-uploader
+    restart: unless-stopped
+    environment:
+      CS_BASE_URL: "${CS_BASE_URL:-}"
+      CS_USERNAME: "${CS_USERNAME:-}"
+      CS_PASSWORD: "${CS_PASSWORD:-}"
+      CS_PARENT_ID: "${CS_PARENT_ID:-root}"
+      MAX_UPLOAD_BYTES: "${MAX_UPLOAD_BYTES:-8388608}"
+      CS_INSECURE_TLS: "${CS_INSECURE_TLS:-0}"

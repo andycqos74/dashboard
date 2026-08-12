@@ -1,0 +1,6 @@
+{
+  "_comment": "Where uploaded card logos are stored. Edit and reload - no rebuild needed when mounted (see docker-compose.yml). Drivers: 'combinedstorage' uploads via this dashboard's /upload proxy into Combined Storage (github.com/andycqos74/combinedstorage) and stores the returned public /f/<token> URL, so every visitor sees the same logo - requires the uploader service with CS_* env vars set. 'indexeddb' keeps uploads in each visitor's own browser with no backend, so they are NOT shared. 'http' posts multipart to any endpoint answering {url} or {key}. 'none' disables uploads; logo URLs in links.json still work. maxEdge downscales the longest edge before upload.",
+  "driver": "combinedstorage",
+  "endpoint": "/upload",
+  "maxEdge": 512
+}

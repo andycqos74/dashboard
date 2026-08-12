@@ -17,7 +17,7 @@ clones the repo and builds for you.
    - **Compose path:** `portainer-stack.yml`
    - If the repo is private, add your Git credentials / a personal access token.
 5. (Optional) **Environment variables** → add `DASHBOARD_PORT` if you don't want
-   the default `8080`.
+   the default `1919`, plus the `CS_*` variables below to enable logo uploads.
 6. **Deploy the stack.**
 
 Portainer builds the image and starts the container. Open
@@ -54,6 +54,36 @@ services:
 With a baked image, update links by rebuilding + pushing a new image, then
 redeploy the stack.
 
+## Logo uploads (the `uploader` service)
+
+The stack builds two images: the nginx `dashboard` and a small `uploader` that
+holds your Combined Storage admin credentials so the browser never sees them.
+Set these in Portainer's **Environment variables** panel:
+
+| Variable | Meaning |
+| --- | --- |
+| `CS_BASE_URL` | Combined Storage base URL, e.g. `https://file.example.com:4000` |
+| `CS_USERNAME` / `CS_PASSWORD` | Combined Storage admin login |
+| `CS_PARENT_ID` | folder to upload logos into (default `root`) |
+| `MAX_UPLOAD_BYTES` | upload cap in bytes (default 8388608 = 8MB) |
+| `CS_INSECURE_TLS` | `1` only for a self-signed certificate on a trusted network |
+
+Leave them unset to run without uploads — the dashboard serves normally and
+`/upload` returns a clear "not configured" error.
+
+The `uploader` port is deliberately **not published to the host**: only the
+dashboard container reaches it, via nginx's `/upload` location. Uploading needs
+no login (matching the dashboard's no-login model), so keep the stack on an
+internal network.
+
+Check it from Portainer's console on the uploader container:
+
+```sh
+wget -qO- http://127.0.0.1:3000/health     # {"ok":true,"configured":true}
+```
+
+`configured:false` means the `CS_*` variables didn't reach the container.
+
 ## Troubleshooting
 
 ### Healthcheck: `wget: can't connect to remote host: Connection refused`
@@ -71,6 +101,21 @@ so nginx binds IPv4 only and the IPv6 probe is refused.
 Fixed by probing `127.0.0.1` explicitly. If you deployed before this fix, pull
 the latest commit and redeploy. External access is unaffected either way —
 Docker's published port forwards to the container's IPv4 address.
+
+### Logo upload fails with 502
+
+`/upload` returns 502 when the `uploader` can't reach Combined Storage. The JSON
+body carries the reason — check the uploader's container logs:
+
+- `Combined Storage login failed (401)` — wrong `CS_USERNAME` / `CS_PASSWORD`.
+- `self signed certificate` / TLS errors — set `CS_INSECURE_TLS=1` if that
+  certificate is expected on your network.
+- connection refused / timeout — `CS_BASE_URL` is wrong, or Combined Storage
+  isn't reachable from the Docker network the stack runs on.
+
+A 503 with "Upload service is not configured" means the `CS_*` variables are
+missing. If `/upload` 502s with an nginx page rather than JSON, the `uploader`
+container isn't running — the dashboard itself keeps serving either way.
 
 ## Option C — Edit links on the host without rebuilding
 
