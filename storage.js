@@ -228,6 +228,59 @@ window.Storage = (function () {
           .catch(function () {});
       }));
     },
+    // Ask the server to pull a logo off the site itself. Only the
+    // combinedstorage driver has a server able to do this.
+    canGrab: function () { return !!driver && driver.name === 'combinedstorage' && !!cfg.endpoint; },
+    grabFromSite: function (pageUrl) {
+      if (!this.canGrab()) return Promise.reject(new Error('Fetching from a site needs the upload service'));
+      var base = cfg.endpoint.replace(/\/upload$/, '');
+      return fetch(base + '/grab?url=' + encodeURIComponent(pageUrl), { method: 'POST' })
+        .then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (j) {
+            if (!r.ok) throw new Error(j.error || ('Could not fetch from that site (' + r.status + ')'));
+            return j;
+          });
+        })
+        .then(function (j) {
+          if (!j.url) throw new Error('No image came back from that site');
+          return j.url;
+        });
+    },
+    // Screen capture needs a secure context (https, or localhost). On a plain
+    // http:// LAN address the API simply is not there — callers hide the button.
+    canCapture: function () {
+      return !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+    },
+    // Let the user pick a window/tab, grab one frame, and store it.
+    capture: function () {
+      var self = this;
+      if (!this.canCapture()) return Promise.reject(new Error('Screen capture needs an https:// address'));
+      var stream;
+      return navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: 'window' }, audio: false })
+        .then(function (s) {
+          stream = s;
+          var video = document.createElement('video');
+          video.srcObject = s; video.muted = true;
+          return video.play().then(function () {
+            return new Promise(function (resolve) { setTimeout(function () { resolve(video); }, 350); });
+          });
+        })
+        .then(function (video) {
+          var c = document.createElement('canvas');
+          c.width = video.videoWidth; c.height = video.videoHeight;
+          c.getContext('2d').drawImage(video, 0, 0);
+          return new Promise(function (resolve) { c.toBlob(resolve, 'image/png'); });
+        })
+        .then(function (blob) {
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          if (!blob) throw new Error('Capture produced no image');
+          return self.put(new File([blob], 'screenshot.png', { type: 'image/png' }));
+        })
+        .catch(function (err) {
+          if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+          throw err;
+        });
+    },
     url: function (key) {
       if (!isKey(key)) return key || null;   // plain URL / path passes through
       return urls[key] || null;

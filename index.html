@@ -641,8 +641,16 @@
         (logo ? '<button type="button" data-act="logo-clear" style="margin-left:auto;flex:none;height:30px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--text-dim);font-size:13px;font-weight:600;cursor:pointer">Remove</button>' : '') +
       '</div>' +
       '<input type="file" id="d-file" accept="image/*" style="display:none">' +
+      (enabled ? '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        (Storage.canGrab() ? smallBtn('logo-grab', '⤓ Use the site\'s own logo') : '') +
+        (Storage.canCapture() ? smallBtn('logo-capture', '⛶ Snapshot a window') : '') +
+        '<span style="align-self:center;font-size:12px;color:var(--text-dim)">or press Ctrl+V to paste a screenshot</span>' +
+      '</div>' : '') +
       '<input id="d-logo" value="' + esc(logo || '') + '" placeholder="…or paste an image URL" style="border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:11px;padding:9px 13px;font-size:13.5px;font-weight:500;outline:none">' +
     '</div>';
+  }
+  function smallBtn(act, label) {
+    return '<button type="button" data-act="' + act + '" style="height:32px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:13px;font-weight:600;cursor:pointer">' + esc(label) + '</button>';
   }
 
   // Take a File from a picker/drop, store it, and point the draft at it.
@@ -787,6 +795,60 @@
       var input = document.getElementById('d-logo');
       if (input) input.value = '';
       refreshLogoField();
+    }
+    else if (act === 'logo-grab') { e.preventDefault(); grabLogoFromSite(); }
+    else if (act === 'logo-capture') { e.preventDefault(); captureLogo(); }
+  });
+
+  function logoBusy(msg) {
+    var label = document.getElementById('d-logo-label');
+    if (label) label.textContent = msg;
+  }
+  function logoError(err) {
+    var label = document.getElementById('d-logo-label');
+    var note = document.getElementById('d-logo-note');
+    if (label) label.textContent = 'Could not get an image';
+    if (note) { note.textContent = err.message || String(err); note.style.color = '#C2415A'; }
+  }
+
+  // Pull the logo from the site the link points at.
+  function grabLogoFromSite() {
+    var urlField = document.getElementById('d-url');
+    var target = (urlField && urlField.value || '').trim();
+    if (!target) { logoError(new Error('Enter the link URL first')); return; }
+    if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
+    logoBusy('Fetching from the site…');
+    Storage.grabFromSite(target).then(function (url) {
+      var input = document.getElementById('d-logo');
+      if (input) input.value = url;
+      refreshLogoField();
+    }).catch(logoError);
+  }
+
+  // Grab a frame of a window/tab the user picks.
+  function captureLogo() {
+    logoBusy('Choose a window to capture…');
+    Storage.capture().then(function (key) {
+      var input = document.getElementById('d-logo');
+      if (input) input.value = key;
+      refreshLogoField();
+    }).catch(function (err) {
+      if (err && err.name === 'NotAllowedError') { refreshLogoField(); return; }  // user cancelled
+      logoError(err);
+    });
+  }
+
+  // Paste a screenshot (Win+Shift+S, Cmd+Shift+4) straight into the modal.
+  document.addEventListener('paste', function (e) {
+    if (!state.modalOpen || !Storage.uploadsEnabled()) return;
+    var items = (e.clipboardData && e.clipboardData.items) || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].kind !== 'file' || !/^image\//.test(items[i].type)) continue;
+      var file = items[i].getAsFile();
+      if (!file) continue;
+      e.preventDefault();
+      acceptLogoFile(file, refreshLogoField);
+      return;
     }
   });
 

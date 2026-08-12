@@ -104,8 +104,31 @@ Docker's published port forwards to the container's IPv4 address.
 
 ### Logo upload fails with 502
 
-`/upload` returns 502 when the `uploader` can't reach Combined Storage. The JSON
-body carries the reason — check the uploader's container logs:
+First, ask the uploader to diagnose itself — from Portainer's console on the
+**uploader** container:
+
+```sh
+wget -qO- 'http://127.0.0.1:3000/health?probe=1'
+```
+
+It actually logs in to Combined Storage and reports what happened:
+
+```json
+{"ok":true,"configured":true,"reachable":true,"base":"https://…","folder":"root"}
+```
+
+`reachable:false` comes with a `detail` naming the cause. `configured:false`
+means the `CS_*` variables never reached the container.
+
+> **Fixed in this version:** Combined Storage refuses a second file with the same
+> name in a folder ("An item with that name already exists here"), so the *second*
+> logo upload used to fail with a 502 — every browser sends much the same
+> filename. The uploader now gives each upload a unique name, so repeated
+> uploads of `logo.png` all succeed. If you hit 502 on your second upload,
+> redeploy to pick this up.
+
+Otherwise `/upload` returns 502 when the `uploader` can't reach Combined
+Storage. The JSON body carries the reason — check the uploader's container logs:
 
 - `Combined Storage login failed (401)` — wrong `CS_USERNAME` / `CS_PASSWORD`.
 - `self signed certificate` / TLS errors — set `CS_INSECURE_TLS=1` if that

@@ -65,9 +65,29 @@ These are all stored in that browser. To change things for **everyone**, edit
 
 ## Logo uploads (Combined Storage)
 
-You can put a real logo on any tile: **drag an image straight onto the tile**, or
-open **✎ Edit** and drop/click the logo slot. Images are downscaled in the browser
-(longest edge 512px by default) before being stored.
+You can put a real logo on any tile, four ways — no need to save an image file
+first:
+
+1. **Use the site's own logo** — press *"⤓ Use the site's own logo"* in **✎ Edit**
+   and the server fetches the page the link points at, taking its `og:image`
+   (the sharing preview), else `apple-touch-icon`, else `favicon`.
+2. **Paste a screenshot** — take one with `Win`+`Shift`+`S` (or `Cmd`+`Shift`+`4`)
+   and press `Ctrl`+`V` in the Edit dialog.
+3. **Snapshot a window** — *"⛶ Snapshot a window"* lets you pick any open window
+   or tab and grabs a frame. Because browsers only allow screen capture on a
+   **secure context**, this button appears only when the dashboard is served over
+   `https://` (or opened at `localhost`); over plain `http://` on a LAN address it
+   is hidden.
+4. **Drag or choose an image** — drag one onto a tile, or onto the logo slot in
+   **✎ Edit**.
+
+Images are downscaled in the browser (longest edge 512px by default) before being
+stored.
+
+> A true rendered screenshot of a *page* would need a headless browser on the
+> server (~400MB of Chromium) and, for the login-gated tools here, would only
+> ever capture a login form — which is why options 1–3 exist instead. Ask if you
+> want the headless option adding for public sites.
 
 Where those uploads live is a config choice — `config/storage.json` picks a
 driver, so swapping backends never means changing code:
