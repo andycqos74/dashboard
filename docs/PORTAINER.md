@@ -104,8 +104,30 @@ Docker's published port forwards to the container's IPv4 address.
 
 ### Logo upload fails with 502
 
-**Just open this in a browser** on any machine that can reach the dashboard —
-no container shell needed:
+**Start with the uploader container's log.** On startup it tries to sign in to
+Combined Storage and writes the verdict, so most problems are answered without
+running anything:
+
+```
+[uploader] listening on :3000 -> https://cdn.example.com:4000 folder=root
+[uploader] TLS verification: enabled
+[uploader] checking Combined Storage at https://cdn.example.com:4000 ...
+[uploader] OK - signed in to Combined Storage, uploading into folder "root". Ready.
+```
+
+If it can't, the next line names the cause and the fix (untrusted certificate →
+`CS_INSECURE_TLS=1`, hostname that doesn't resolve inside Docker, wrong port,
+rejected login, and so on). Restart the container to re-check.
+
+It also logs **every request it receives**. If you attempt an upload and nothing
+new appears in this log, the request never arrived — the problem is between the
+browser and the uploader (see "Cannot reach the uploader" below), not with
+Combined Storage.
+
+### Or probe it over HTTP
+
+**Open this in a browser** on any machine that can reach the dashboard — no
+container shell needed:
 
 ```
 http://<docker-host>:1919/uploader-health?probe=1
@@ -120,12 +142,23 @@ It actually logs in to Combined Storage and reports what happened:
 `reachable:false` comes with a `detail` naming the cause. `configured:false`
 means the `CS_*` variables never reached the container.
 
-If that URL returns **`Cannot reach the uploader service`**, the `uploader`
-container isn't running — which is also what a 502 on upload means in that case.
-The usual reason is deploying the stack through Portainer's **Web editor**,
-which cannot build images from a Dockerfile: use the **Repository** method
-(above) so both images get built. Check Portainer → Containers for
-`qos-dashboard-uploader`.
+If `/uploader-health` returns the **dashboard page instead of JSON**, the
+`dashboard` image is out of date: that route lives in `nginx.conf`, which is
+baked into the *dashboard* image, not the uploader's. Redeploy with a rebuild —
+**both** images need building, and the uploader running with fresh settings is
+not enough on its own.
+
+If it returns **`Cannot reach the uploader service`**, the `uploader` container
+isn't reachable from the dashboard container — which is also what a 502 on
+upload means in that case. Check:
+
+- Portainer → Containers shows `qos-dashboard-uploader` **running**.
+- Both containers are in the **same stack/network**. nginx resolves the
+  uploader by its compose service name (`uploader`) over Docker's embedded DNS,
+  which only works on a stack network, not the default bridge.
+- The stack was deployed with the **Repository** method — Portainer's **Web
+  editor cannot build images from a Dockerfile**, so the uploader would never
+  be built.
 
 The dashboard's own error messages now carry the reason too — a failed upload
 shows it under the logo box in the Edit dialog, rather than a bare "502".
