@@ -4,13 +4,13 @@
  * One small interface, several interchangeable backends ("drivers"), so where
  * uploaded logos live is a config choice rather than a code change:
  *
- *   Storage.init(config)      -> Promise, picks and prepares the driver
- *   Storage.put(file)         -> Promise<key>   store an image, return its key
- *   Storage.remove(key)       -> Promise        delete a stored image
- *   Storage.hydrate(keys)     -> Promise        resolve keys to URLs up front
- *   Storage.url(key)          -> string|null    synchronous lookup for render
- *   Storage.isKey(value)      -> bool           is this a stored-image key?
- *   Storage.driverName()      -> string
+ *   LogoStore.init(config)      -> Promise, picks and prepares the driver
+ *   LogoStore.put(file)         -> Promise<key>   store an image, return its key
+ *   LogoStore.remove(key)       -> Promise        delete a stored image
+ *   LogoStore.hydrate(keys)     -> Promise        resolve keys to URLs up front
+ *   LogoStore.url(key)          -> string|null    synchronous lookup for render
+ *   LogoStore.isKey(value)      -> bool           is this a stored-image key?
+ *   LogoStore.driverName()      -> string
  *
  * Keys look like "store:<id>". Anything else in a link's `logo` field (an http
  * URL or a repo-relative path like assets/logos/xero.png) is used verbatim, so
@@ -21,7 +21,7 @@
  *   http       POST multipart to an upload endpoint; shared by everyone.
  *   none       uploads disabled (URLs still work).
  */
-window.Storage = (function () {
+window.LogoStore = (function () {
   "use strict";
 
   var KEY_PREFIX = 'store:';
