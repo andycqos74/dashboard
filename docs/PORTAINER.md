@@ -104,11 +104,11 @@ Docker's published port forwards to the container's IPv4 address.
 
 ### Logo upload fails with 502
 
-First, ask the uploader to diagnose itself — from Portainer's console on the
-**uploader** container:
+**Just open this in a browser** on any machine that can reach the dashboard —
+no container shell needed:
 
-```sh
-wget -qO- 'http://127.0.0.1:3000/health?probe=1'
+```
+http://<docker-host>:1919/uploader-health?probe=1
 ```
 
 It actually logs in to Combined Storage and reports what happened:
@@ -119,6 +119,19 @@ It actually logs in to Combined Storage and reports what happened:
 
 `reachable:false` comes with a `detail` naming the cause. `configured:false`
 means the `CS_*` variables never reached the container.
+
+If that URL returns **`Cannot reach the uploader service`**, the `uploader`
+container isn't running — which is also what a 502 on upload means in that case.
+The usual reason is deploying the stack through Portainer's **Web editor**,
+which cannot build images from a Dockerfile: use the **Repository** method
+(above) so both images get built. Check Portainer → Containers for
+`qos-dashboard-uploader`.
+
+The dashboard's own error messages now carry the reason too — a failed upload
+shows it under the logo box in the Edit dialog, rather than a bare "502".
+
+> The uploader image is `node:22-alpine`, which has **no bash**. If you do want
+> a shell in Portainer's console, choose `/bin/sh`.
 
 > **Fixed in this version:** Combined Storage refuses a second file with the same
 > name in a folder ("An item with that name already exists here"), so the *second*
