@@ -8,7 +8,9 @@ COPY server.js ./
 ENV PORT=3000
 EXPOSE 3000
 
-USER node
+# Starts as root only long enough to take ownership of the shared config volume
+# (fresh Docker volumes are root-owned), then server.js drops to uid 1000 before
+# serving anything. Override with RUN_UID / RUN_GID.
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -q -O /dev/null http://127.0.0.1:3000/health || exit 1

@@ -6,11 +6,11 @@ services:
     ports:
       - "1919:80"
     restart: unless-stopped
-    # Mount the shared config as volumes so you can edit live (no rebuild
-    # needed): change config/links.json, bump "version", done.
+    # The whole config directory is shared with the uploader so "Save for
+    # everyone" can rewrite links.json in place. Read-only here: nginx only
+    # serves it.
     volumes:
-      - ./config/links.json:/usr/share/nginx/html/config/links.json:ro
-      - ./config/storage.json:/usr/share/nginx/html/config/storage.json:ro
+      - ./config:/usr/share/nginx/html/config:ro
 
   # Holds the Combined Storage credentials so the browser never sees them, and
   # exposes only POST /upload (reached at /upload via the dashboard's nginx).
@@ -25,6 +25,10 @@ services:
     # http://host.docker.internal:4000.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Writable: this is the service that rewrites links.json when someone uses
+    # "Save for everyone".
+    volumes:
+      - ./config:/config
     networks:
       # "default" is this stack's own network — the uploader MUST stay on it or
       # nginx in the dashboard container cannot reach it. Declaring `networks:`
@@ -44,6 +48,8 @@ services:
       MAX_UPLOAD_BYTES: "${MAX_UPLOAD_BYTES:-8388608}"
       # Set to 1 only for a self-signed certificate on a trusted network.
       CS_INSECURE_TLS: "${CS_INSECURE_TLS:-0}"
+      # Optional shared secret for "Save for everyone"; unset = open to the LAN.
+      PUBLISH_KEY: "${PUBLISH_KEY:-}"
 
 networks:
   # Combined Storage's existing network, created by its own stack. It must

@@ -427,6 +427,7 @@
           '<footer style="display:flex;align-items:center;gap:10px;padding-top:6px;font-size:12.5px;color:var(--text-dim);flex-wrap:wrap">' +
             '<span>Drag a tile to reorder · ★ to pin · saved in this browser</span>' +
             '<span style="flex:1;height:1px;background:var(--line)"></span>' +
+            '<button class="reset-btn" data-act="publish" title="Make this browser\'s tiles the shared set everyone sees" style="border:0;background:transparent;color:var(--text-dim);font-size:12.5px;cursor:pointer;text-decoration:underline">Save for everyone</button>' +
             '<button class="reset-btn" data-act="logofit" title="How logos fill their frame" style="border:0;background:transparent;color:var(--text-dim);font-size:12.5px;cursor:pointer;text-decoration:underline">Logos: ' + state.logoFit + '</button>' +
             '<button class="reset-btn" data-act="reset" style="border:0;background:transparent;color:var(--text-dim);font-size:12.5px;cursor:pointer;text-decoration:underline">Reset to defaults</button>' +
           '</footer>' +
@@ -793,6 +794,66 @@
     if (state.collapsed[name]) delete state.collapsed[name]; else state.collapsed[name] = true;
     persist(); renderContent();
   }
+  // Publish this browser's tiles as the shared set. Nothing here is lost: the
+  // current state becomes the new config, and the version bump is what makes
+  // other browsers adopt it (replacing whatever local edits they had).
+  function publishToEveryone() {
+    // store: logos live in this browser's IndexedDB and mean nothing to anyone
+    // else, so warn rather than silently publish tiles that look blank to them.
+    var localOnly = state.links.filter(function (l) { return LogoStore.isKey(l.logo); });
+    var msg = 'Make this browser\'s ' + state.links.length + ' tiles the shared set?\n\n' +
+      'Everyone else will see these links, groups, pins and colours the next time they load ' +
+      'the dashboard, replacing any changes they made in their own browser.';
+    if (localOnly.length) {
+      msg += '\n\n' + localOnly.length + ' logo' + (localOnly.length === 1 ? '' : 's') +
+        ' (' + localOnly.slice(0, 3).map(function (l) { return l.name; }).join(', ') +
+        (localOnly.length > 3 ? '…' : '') + ') are stored only in this browser and will not be ' +
+        'shared. Re-add those images while uploads are enabled to publish them.';
+    }
+    if (!window.confirm(msg)) return;
+
+    var btn = document.querySelector('[data-act="publish"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+    fetch('publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ links: state.links, groupColors: state.groupColors })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) throw new Error(j.error || ('Save failed (' + r.status + ')'));
+        return j;
+      });
+    }).then(function (j) {
+      // Adopt the new version locally, otherwise this browser would decide the
+      // config had changed and re-seed itself on the next load.
+      state.version = j.version;
+      persist();
+      if (btn) { btn.disabled = false; btn.textContent = 'Save for everyone'; }
+      // Never claim a clean save if the server refused any tile.
+      if (j.skipped) {
+        toast('Published ' + j.count + ' tiles (v' + j.version + '), but ' + j.skipped +
+          ' were skipped — check they have a name and a valid web address.', true);
+      } else {
+        toast('Saved for everyone — ' + j.count + ' tiles published (v' + j.version + ')');
+      }
+    }).catch(function (err) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save for everyone'; }
+      toast(err.message || String(err), true);
+    });
+  }
+
+  function toast(text, isError) {
+    var el = document.createElement('div');
+    el.textContent = text;
+    el.setAttribute('style', 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:60;' +
+      'max-width:min(560px,92vw);padding:12px 18px;border-radius:12px;font-size:14px;font-weight:600;' +
+      'box-shadow:var(--shadow-lift);border:1px solid ' + (isError ? '#C2415A' : 'var(--line)') + ';' +
+      'background:' + (isError ? '#C2415A' : 'var(--surface)') + ';color:' + (isError ? '#fff' : 'var(--text)'));
+    document.getElementById('wrap').appendChild(el);
+    setTimeout(function () { el.remove(); }, isError ? 7000 : 4000);
+  }
+
   function resetAll() {
     fetchConfig().then(function (config) {
       var cfgLinks = (config && Array.isArray(config.links)) ? config.links : [];
@@ -832,6 +893,7 @@
       if (input) input.value = '';
       refreshLogoField();
     }
+    else if (act === 'publish') publishToEveryone();
     else if (act === 'logo-grab') { e.preventDefault(); grabLogoFromSite(); }
     else if (act === 'logo-capture') { e.preventDefault(); captureLogo(); }
   });

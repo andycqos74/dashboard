@@ -67,9 +67,25 @@ Set these in Portainer's **Environment variables** panel:
 | `CS_PARENT_ID` | folder to upload logos into (default `root`) |
 | `MAX_UPLOAD_BYTES` | upload cap in bytes (default 8388608 = 8MB) |
 | `CS_INSECURE_TLS` | `1` only for a self-signed certificate on a trusted network |
+| `PUBLISH_KEY` | Optional shared secret required by **Save for everyone**. Unset = anyone on the network can publish, matching the no-login model |
 
 Leave them unset to run without uploads — the dashboard serves normally and
 `/upload` returns a clear "not configured" error.
+
+### Where the shared link set lives
+
+Both containers share a named volume, **`dashboard-config`**, mounted at
+`/usr/share/nginx/html/config` (dashboard, read-only) and `/config` (uploader,
+writable). Docker seeds it from the image the first time it's created, so a new
+deployment starts with the link set from the repo; after that, **Save for
+everyone** rewrites `links.json` in that volume.
+
+This means the shared links **survive redeploys** and are no longer replaced by
+whatever is in the repo. To deliberately go back to the repo's set, delete the
+volume (Portainer → Volumes → `..._dashboard-config`) and redeploy.
+
+The uploader briefly starts as root to take ownership of that volume — fresh
+Docker volumes are root-owned — then drops to uid 1000 before serving anything.
 
 ### How the uploader reaches Combined Storage
 
