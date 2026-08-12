@@ -234,6 +234,9 @@ function send(res, status, obj) {
 
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://localhost');
+  // Log every request: silence in this log means nginx never reached us, which
+  // is a completely different problem from Combined Storage refusing an upload.
+  console.log(`[uploader] ${req.method} ${u.pathname}${u.search} from ${req.socket.remoteAddress || '?'}`);
 
   // /health           liveness only
   // /health?probe=1   actually log in to Combined Storage and report why not,
@@ -311,6 +314,51 @@ const server = http.createServer((req, res) => {
   req.on('error', () => { if (!aborted) send(res, 400, { error: 'Upload stream failed.' }); });
 });
 
+// Explain a connection failure in the terms that actually fix it. The uploader
+// image has no shell to poke around in, so the log has to carry the diagnosis.
+function hintFor(message) {
+  const m = String(message);
+  if (/self.signed|unable to verify|CERT_|DEPTH_ZERO/i.test(m)) {
+    return 'The certificate is not trusted. If that is expected on your network, set CS_INSECURE_TLS=1 on this service.';
+  }
+  if (/ENOTFOUND|EAI_AGAIN/i.test(m)) {
+    return `The hostname in CS_BASE_URL does not resolve from inside this container. If it is an internal name, check the container's DNS; if it is a public name pointing back at this host, try the LAN address or add an extra_hosts entry.`;
+  }
+  if (/ECONNREFUSED/i.test(m)) {
+    return 'Nothing is listening on that host/port from inside this container. Check CS_BASE_URL (including the port) and that Combined Storage is reachable from this Docker network.';
+  }
+  if (/ETIMEDOUT|timeout/i.test(m)) {
+    return 'The connection timed out - usually a firewall, or a public address that does not loop back from inside Docker.';
+  }
+  if (/login failed \(401\)/i.test(m)) {
+    return 'Reached Combined Storage, but it rejected the login. Check CS_USERNAME and CS_PASSWORD.';
+  }
+  if (/wrong version number|EPROTO/i.test(m)) {
+    return 'TLS handshake failed - CS_BASE_URL may need http:// instead of https:// (or vice versa).';
+  }
+  return 'Check CS_BASE_URL, CS_USERNAME and CS_PASSWORD on this service.';
+}
+
+// Prove the whole path at boot, so the log answers "why does uploading fail?"
+// without needing a shell or an HTTP probe.
+function selfTest() {
+  if (!BASE || !USER || !PASS) {
+    console.error('[uploader] NOT CONFIGURED - set CS_BASE_URL, CS_USERNAME and CS_PASSWORD. Uploads will return 503.');
+    return;
+  }
+  console.log(`[uploader] checking Combined Storage at ${BASE} ...`);
+  login().then(
+    () => console.log(`[uploader] OK - signed in to Combined Storage, uploading into folder "${PARENT}". Ready.`),
+    (err) => {
+      console.error(`[uploader] CANNOT REACH Combined Storage: ${err.message}`);
+      console.error(`[uploader] -> ${hintFor(err.message)}`);
+      console.error('[uploader] Uploads will fail with 502 until this is resolved. Restart this container to re-check.');
+    },
+  );
+}
+
 server.listen(PORT, () => {
   console.log(`[uploader] listening on :${PORT} -> ${BASE || '(unconfigured)'} folder=${PARENT}`);
+  console.log(`[uploader] TLS verification: ${INSECURE ? 'DISABLED (CS_INSECURE_TLS=1)' : 'enabled'}`);
+  selfTest();
 });
