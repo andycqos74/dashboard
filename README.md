@@ -192,6 +192,23 @@ someone clicks **Reset to defaults**.
   These live in that browser's `localStorage` and don't affect anyone else. **Reset
   to defaults** re-pulls the shared config and clears local changes.
 
+## Two views: staff and public
+
+The container serves the same dashboard on two ports:
+
+| | Port | What you get |
+| --- | --- | --- |
+| **Staff** | `1919` | Everything: add/edit/delete, pin, drag, colours, logo uploads, **Save for everyone** |
+| **Public** | `1920` | **Read-only.** The same links, search, layouts, card sizes and light/dark — no editing of any kind |
+
+Read-only is enforced by the server, not just hidden in the page: on the public
+port `/publish`, `/upload` and `/grab` return **403**, whatever the browser
+tries. That's what makes `1920` the port to expose through a tunnel or reverse
+proxy while the staff view has no login.
+
+Both views read the same `config/links.json`, so publishing from the staff view
+updates the public one too.
+
 ## Run it
 
 ### Docker Compose (recommended — live-editable links)
@@ -200,14 +217,15 @@ someone clicks **Reset to defaults**.
 docker compose up -d --build
 ```
 
-Open **http://localhost:8080**. `config/links.json` is mounted read-only into the
-container, so you can edit it on the host and reload the page.
+Staff view on **http://localhost:1919**, read-only public view on
+**http://localhost:1920**. `config/` is mounted from the host, so edits there
+(and anything published from the staff view) show up on both.
 
 ### Plain Docker
 
 ```bash
 docker build -t qos-staff-dashboard .
-docker run -d -p 8080:80 --name qos-dashboard qos-staff-dashboard
+docker run -d -p 1919:80 -p 1920:8080 --name qos-dashboard qos-staff-dashboard
 ```
 
 (Editing links this way requires an image rebuild, or mount the file:
@@ -232,6 +250,8 @@ Then open http://localhost:8080. (A static server is needed rather than opening
 
 ```
 index.html               The whole app — markup, styles, and logic.
+nginx.conf               Two server blocks: :80 staff (editable), :8080 public.
+nginx-app.conf           Static serving shared by both, so they cannot drift.
 storage.js               Pluggable logo storage (combinedstorage/indexeddb/http).
 uploader/                Sidecar holding Combined Storage credentials.
 config/links.json        Shared, manually-edited link set (source of truth).
@@ -239,7 +259,7 @@ config/storage.json      Which storage driver uploads use.
 assets/qos-crest.png     Club crest.
 nginx.conf               Serves the site; no-cache for index.html + links.json.
 Dockerfile               nginx:alpine image.
-docker-compose.yml       Runs it on :8080 with links.json mounted live.
+docker-compose.yml       Runs staff on :1919 and public on :1920.
 portainer-stack.yml      Portainer stack (Repository build method).
 design-reference.dc.html Original design prototype (reference only).
 docs/DESIGN.md           Full design handoff: tokens, screens, behaviour.

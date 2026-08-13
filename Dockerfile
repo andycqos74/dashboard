@@ -7,10 +7,11 @@ COPY storage.js /usr/share/nginx/html/storage.js
 COPY assets/ /usr/share/nginx/html/assets/
 COPY config/ /usr/share/nginx/html/config/
 
-# Server config (no-cache for the app shell + link config)
+# Server config: :80 staff view (editable), :8080 public view (read-only)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx-app.conf /etc/nginx/app-static.conf
 
-EXPOSE 80
+EXPOSE 80 8080
 
 # Probe 127.0.0.1 explicitly: "localhost" can resolve to ::1 first. Because we
 # replace default.conf, the image's 10-listen-on-ipv6-by-default.sh skips adding

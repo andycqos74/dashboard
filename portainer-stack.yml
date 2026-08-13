@@ -8,7 +8,10 @@
 # links baked in come straight from config/links.json in the repo.
 #
 # Environment variables (set in Portainer's "Environment variables" panel):
-#   DASHBOARD_PORT   host port to publish (default 1919)
+#   DASHBOARD_PORT   host port for the staff view, full editing (default 1919)
+#   PUBLIC_PORT      host port for the read-only public view (default 1920).
+#                    Editing endpoints return 403 there, so this port is the one
+#                    to expose through a tunnel or reverse proxy.
 #   CS_BASE_URL      How the UPLOADER reaches Combined Storage from inside Docker.
 #                    Defaults to http://combinedstorage:4000 over the shared
 #                    network below, so it usually needs no value at all. Do NOT
@@ -37,7 +40,10 @@ services:
     image: qos-staff-dashboard:latest
     container_name: qos-dashboard
     ports:
+      # Staff view: full editing.
       - "${DASHBOARD_PORT:-1919}:80"
+      # Public view: read-only, safe to expose (e.g. point a tunnel here).
+      - "${PUBLIC_PORT:-1920}:8080"
     restart: unless-stopped
     # Shared with the uploader so "Save for everyone" can rewrite links.json.
     # Docker seeds this volume from the image the first time it is created, so

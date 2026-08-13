@@ -4,7 +4,10 @@ services:
     image: qos-staff-dashboard
     container_name: qos-dashboard
     ports:
+      # Staff view: full editing.
       - "1919:80"
+      # Public view: read-only, safe to expose (e.g. point a tunnel here).
+      - "1920:8080"
     restart: unless-stopped
     # The whole config directory is shared with the uploader so "Save for
     # everyone" can rewrite links.json in place. Read-only here: nginx only
