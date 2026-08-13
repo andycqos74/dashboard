@@ -23,6 +23,8 @@
 #   CS_PASSWORD      Combined Storage admin password
 #   CS_PARENT_ID     folder to upload logos into (default "root")
 #   CS_INSECURE_TLS  set to 1 only for a self-signed cert on a trusted network
+#   PUBLISH_KEY      optional shared secret required by "Save for everyone".
+#                    Leave unset so anyone on the network can publish.
 #
 # Leave the CS_* variables unset to run without logo uploads: the dashboard
 # still serves normally and config/storage.json decides the fallback.
@@ -37,6 +39,11 @@ services:
     ports:
       - "${DASHBOARD_PORT:-1919}:80"
     restart: unless-stopped
+    # Shared with the uploader so "Save for everyone" can rewrite links.json.
+    # Docker seeds this volume from the image the first time it is created, so
+    # a new deployment starts with the link set baked into the repo.
+    volumes:
+      - dashboard-config:/usr/share/nginx/html/config
     # Probe 127.0.0.1, not "localhost": localhost can resolve to ::1 first and
     # nginx listens on IPv4 only, which fails with "connection refused" even
     # though the site is serving correctly.
@@ -61,6 +68,9 @@ services:
     # CS_BASE_URL to http://host.docker.internal:4000.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Writable: this service rewrites links.json on "Save for everyone".
+    volumes:
+      - dashboard-config:/config
     networks:
       # "default" is this stack's own network — the uploader MUST stay on it or
       # nginx in the dashboard container cannot reach it. Declaring `networks:`
@@ -75,6 +85,7 @@ services:
       CS_PARENT_ID: "${CS_PARENT_ID:-root}"
       MAX_UPLOAD_BYTES: "${MAX_UPLOAD_BYTES:-8388608}"
       CS_INSECURE_TLS: "${CS_INSECURE_TLS:-0}"
+      PUBLISH_KEY: "${PUBLISH_KEY:-}"
 
 networks:
   # Combined Storage's existing network, created by its own stack, so the
@@ -84,3 +95,8 @@ networks:
   combinedstorage:
     name: ${CS_NETWORK:-cloudflared-combinedstorage_default}
     external: true
+
+volumes:
+  # Holds config/links.json so it survives redeploys and is shared by both
+  # containers. Delete this volume to go back to the link set in the repo.
+  dashboard-config:

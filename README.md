@@ -60,8 +60,31 @@ Each link entry:
 - **Logos: contain / cover** in the footer controls how logo images fill their
   slot: `contain` shows the whole logo letterboxed, `cover` fills and crops.
 
-These are all stored in that browser. To change things for **everyone**, edit
-`config/links.json` (and bump `version`).
+These are all stored in that browser — until you publish them.
+
+### "Save for everyone"
+
+Arrange the dashboard how you want it — add, edit, delete, pin, drag, recolour,
+set logos — then press **Save for everyone** in the footer. Your current tiles
+become the shared set: the server rewrites `config/links.json` and bumps its
+`version`, and every other browser adopts it on its next load.
+
+**Your edits are not lost — they are exactly what gets published.** Other
+people's local changes *are* replaced, which is the point; the confirmation
+says so before anything is written.
+
+Notes:
+
+- Logos stored **only in a browser** (the `indexeddb` driver, shown as
+  `store:…`) can't be shared — the dialog lists them and they're left out. With
+  the `combinedstorage` driver logos are real URLs, so they publish fine.
+- Links without a scheme are normalised (`stock.qosfc.com` →
+  `https://stock.qosfc.com`); anything that isn't a web address is refused and
+  reported rather than silently dropped.
+- The file stays hand-editable. Editing it directly still works — just bump
+  `version` yourself.
+- Uploads and publishing are both unauthenticated by default. Set `PUBLISH_KEY`
+  on the uploader service to require a shared secret for publishing.
 
 ## Logo uploads (Combined Storage)
 

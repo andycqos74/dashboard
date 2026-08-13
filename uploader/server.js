@@ -20,6 +20,8 @@
 
 const http = require('http');
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
 const { URL } = require('url');
 
 const PORT = Number(process.env.PORT || 3000);
@@ -31,7 +33,44 @@ const MAX_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 8 * 1024 * 1024);
 // Set CS_INSECURE_TLS=1 only for a self-signed certificate on a trusted LAN.
 const INSECURE = process.env.CS_INSECURE_TLS === '1';
 
+// "Save for everyone": the shared links file this service may rewrite. It is
+// the same file nginx serves at /config/links.json, shared through a volume.
+const CONFIG_PATH = process.env.LINKS_CONFIG_PATH || '/config/links.json';
+// Optional shared secret for publishing. Unset = anyone on the network may
+// publish, matching the dashboard's no-login model.
+const PUBLISH_KEY = process.env.PUBLISH_KEY || '';
+const MAX_CONFIG_BYTES = 512 * 1024;
+const MAX_LINKS = 500;
+
 let cookie = null;
+
+// A freshly created Docker volume is owned by root, so an unprivileged process
+// cannot write the shared links file into it. Start as root, take ownership of
+// just that directory, then drop to an unprivileged user for everything else -
+// the container does not stay root, and nothing else needs elevated rights.
+function dropPrivileges() {
+  if (typeof process.getuid !== 'function' || process.getuid() !== 0) return;
+  const uid = Number(process.env.RUN_UID || 1000);
+  const gid = Number(process.env.RUN_GID || 1000);
+  const dir = path.dirname(CONFIG_PATH);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.chownSync(dir, uid, gid);
+    for (const f of fs.readdirSync(dir)) {
+      try { fs.chownSync(path.join(dir, f), uid, gid); } catch (_) {}
+    }
+  } catch (err) {
+    console.warn(`[uploader] could not take ownership of ${dir}: ${err.message}`);
+  }
+  try {
+    process.setgid(gid);
+    process.setuid(uid);
+    console.log(`[uploader] dropped privileges to uid ${uid}`);
+  } catch (err) {
+    console.warn(`[uploader] could not drop privileges: ${err.message} (continuing as root)`);
+  }
+}
+dropPrivileges();
 
 function agentFor(u) { return u.protocol === 'https:' ? https : http; }
 
@@ -232,6 +271,79 @@ async function grabSiteImage(pageUrl) {
   throw new Error(`Could not fetch an image from that site${lastErr ? ` (${lastErr.message})` : ''}`);
 }
 
+// ---- "Save for everyone": publish the caller's link set as the shared config --
+// Only known fields are copied through, so a malformed or hostile payload can
+// never inject arbitrary JSON into the file every staff browser loads.
+function cleanLink(l) {
+  if (!l || typeof l !== 'object') return null;
+  const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+  const name = str(l.name, 200);
+  let url = str(l.url, 2000);
+  if (!name || !url) return null;
+  // Add the scheme the way the Add/Edit dialog does, so a link typed or
+  // hand-edited as "stock.example.com" is published rather than silently
+  // dropped. Anything with an explicit non-web scheme (javascript:, data:,
+  // file:) is refused - this file is loaded by every staff browser.
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = 'https://' + url.replace(/^\/+/, '');
+  if (!/^https?:\/\//i.test(url)) return null;
+  const out = { name, url, group: str(l.group, 120) || 'Other' };
+  if (l.fav === true) out.fav = true;
+  const logo = str(l.logo, 2000);
+  // store: keys live in one browser's IndexedDB, so they are meaningless to
+  // everyone else - publish only real URLs.
+  if (logo && /^https?:\/\//i.test(logo)) out.logo = logo;
+  else if (logo && /^(assets|config)\//.test(logo)) out.logo = logo;
+  const icon = str(l.icon, 200);
+  if (icon) out.icon = icon;
+  const color = str(l.color, 32);
+  if (/^#[0-9a-f]{3,8}$/i.test(color)) out.color = color;
+  return out;
+}
+
+function cleanGroupColors(obj) {
+  const out = {};
+  if (!obj || typeof obj !== 'object') return out;
+  for (const k of Object.keys(obj).slice(0, 100)) {
+    const v = obj[k];
+    if (typeof k === 'string' && typeof v === 'string' && /^#[0-9a-f]{3,8}$/i.test(v.trim())) {
+      out[k.slice(0, 120)] = v.trim();
+    }
+  }
+  return out;
+}
+
+function readCurrentConfig() {
+  try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch (_) { return null; }
+}
+
+function publish(payload) {
+  const links = Array.isArray(payload && payload.links) ? payload.links : null;
+  if (!links) throw new Error('No links in the request');
+  if (links.length > MAX_LINKS) throw new Error(`Too many links (max ${MAX_LINKS})`);
+  const cleaned = links.map(cleanLink).filter(Boolean);
+  if (!cleaned.length) throw new Error('No valid links to publish');
+
+  const current = readCurrentConfig();
+  // Bumping the version is what tells every other browser to pick this up.
+  const version = Number(current && current.version) > 0 ? Number(current.version) + 1 : 1;
+  const next = {
+    version,
+    _comment: (current && current._comment) ||
+      'Shared link set for the QoS Staff Dashboard. Written by the dashboard\'s "Save for everyone" action; safe to hand-edit - bump "version" by 1 so browsers pick up the change. Never put passwords or API keys here: this file is public.',
+    groupColors: cleanGroupColors(payload.groupColors),
+    links: cleaned,
+  };
+
+  const dir = path.dirname(CONFIG_PATH);
+  fs.mkdirSync(dir, { recursive: true });
+  // Write to a temp file and rename, so a browser loading the config mid-write
+  // never sees a truncated file.
+  const tmp = path.join(dir, `.links.${process.pid}.${Date.now()}.tmp`);
+  fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + '\n', 'utf8');
+  fs.renameSync(tmp, CONFIG_PATH);
+  return { version, count: cleaned.length, skipped: links.length - cleaned.length };
+}
+
 function extFor(mime) {
   const map = {
     'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp',
@@ -280,6 +392,40 @@ const server = http.createServer((req, res) => {
       (err) => send(res, 200, { ok: true, configured: true, reachable: false, base: BASE, detail: describeError(err) }),
     );
   }
+  // Publishing rewrites the shared links file; it needs no Combined Storage
+  // credentials, so it is handled before the CS_* configuration check below.
+  if (req.method === 'POST' && u.pathname === '/publish') {
+    if (PUBLISH_KEY && req.headers['x-publish-key'] !== PUBLISH_KEY) {
+      return send(res, 401, { error: 'Wrong or missing edit key.' });
+    }
+    const chunks = [];
+    let total = 0, tooBig = false;
+    req.on('data', (c) => {
+      total += c.length;
+      if (total > MAX_CONFIG_BYTES) { tooBig = true; req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      if (tooBig) return send(res, 413, { error: 'That link set is too large to publish.' });
+      try {
+        const result = publish(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        console.log(`[uploader] published ${result.count} links as version ${result.version}` +
+          (result.skipped ? ` (${result.skipped} skipped)` : ''));
+        send(res, 200, result);
+      } catch (err) {
+        const detail = describeError(err);
+        console.error('[uploader] publish failed:', detail);
+        const denied = /EACCES|EROFS|EPERM/i.test(detail);
+        send(res, denied ? 500 : 400, {
+          error: denied
+            ? `Cannot write ${CONFIG_PATH} - the config volume is read-only for this service.`
+            : detail,
+        });
+      }
+    });
+    return;
+  }
+
   const isUpload = req.method === 'POST' && u.pathname === '/upload';
   const isGrab = req.method === 'POST' && u.pathname === '/grab';
   if (!isUpload && !isGrab) return send(res, 404, { error: 'Not found' });
@@ -408,6 +554,11 @@ function selfTest() {
 
 server.listen(PORT, () => {
   console.log(`[uploader] listening on :${PORT} -> ${BASE || '(unconfigured)'} folder=${PARENT}`);
+  const writable = (() => {
+    try { fs.accessSync(path.dirname(CONFIG_PATH), fs.constants.W_OK); return true; } catch (_) { return false; }
+  })();
+  console.log(`[uploader] shared links file: ${CONFIG_PATH} (${writable ? 'writable' : 'NOT writable - "Save for everyone" will fail'})` +
+    (PUBLISH_KEY ? ' [edit key required]' : ''));
   console.log(`[uploader] TLS verification: ${INSECURE ? 'DISABLED (CS_INSECURE_TLS=1)' : 'enabled'}`);
   selfTest();
 });
