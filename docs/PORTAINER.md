@@ -16,12 +16,14 @@ clones the repo and builds for you.
      `refs/heads/claude/claude-design-dashboard-e1ov1g` before it's merged)
    - **Compose path:** `portainer-stack.yml`
    - If the repo is private, add your Git credentials / a personal access token.
-5. (Optional) **Environment variables** → add `DASHBOARD_PORT` if you don't want
-   the default `1919`, plus the `CS_*` variables below to enable logo uploads.
+5. (Optional) **Environment variables** → `DASHBOARD_PORT` / `PUBLIC_PORT` if you
+   don't want the defaults `1919` / `1920`, plus the `CS_*` variables below to
+   enable logo uploads.
 6. **Deploy the stack.**
 
-Portainer builds the image and starts the container. Open
-`http://<docker-host>:8080`.
+Portainer builds the images and starts the containers. Open the staff view at
+`http://<docker-host>:1919`, and the read-only public view at
+`http://<docker-host>:1920`.
 
 ### Updating links later
 
@@ -47,7 +49,8 @@ services:
     image: <registry>/qos-staff-dashboard:latest
     container_name: qos-dashboard
     ports:
-      - "8080:80"
+      - "1919:80"      # staff view (editing)
+      - "1920:8080"    # public view (read-only)
     restart: unless-stopped
 ```
 
@@ -68,6 +71,17 @@ Set these in Portainer's **Environment variables** panel:
 | `MAX_UPLOAD_BYTES` | upload cap in bytes (default 8388608 = 8MB) |
 | `CS_INSECURE_TLS` | `1` only for a self-signed certificate on a trusted network |
 | `PUBLISH_KEY` | Optional shared secret required by **Save for everyone**. Unset = anyone on the network can publish, matching the no-login model |
+
+### Staff vs public port
+
+The dashboard container publishes two ports: `DASHBOARD_PORT` (default 1919) is
+the **staff** view with full editing, and `PUBLIC_PORT` (default 1920) is a
+**read-only** view of the same links.
+
+On the public port nginx returns **403** for `/publish`, `/upload` and `/grab`,
+so it stays read-only regardless of what a browser sends. Point your tunnel or
+reverse proxy at `PUBLIC_PORT`, and keep `DASHBOARD_PORT` on the internal
+network.
 
 Leave them unset to run without uploads — the dashboard serves normally and
 `/upload` returns a clear "not configured" error.
